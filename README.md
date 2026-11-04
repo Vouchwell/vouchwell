@@ -1,5 +1,7 @@
 # Vouchwell
 
+[![Audited by AddonAudit](https://addonaudit.com/badges/audited.svg)](https://addonaudit.com/addon/io-github-vouchwell-vouchwell/)
+
 **Tamper-evident receipts for AI agent actions.**
 
 > **Formerly Proofwire.** Renamed after 0.5.0 because another company was
