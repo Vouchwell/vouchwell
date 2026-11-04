@@ -70,13 +70,21 @@ jobs:
     # The Python SDK against its own tests and, with Node present, against the
     # real CLI and core in both directions: a log Python wrote must pass
     # `vw verify` and `vw check`, and one JavaScript wrote must verify in
-    # Python. 3.9 is the oldest version the package claims.
+    # Python. 3.9 is the oldest version the package claims. setup-python has
+    # no 3.9 for Ubuntu 26.04, so on Linux 3.9 runs on 24.04, the newest that
+    # still has it.
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
         python: ['3.9', '3.13']
+        exclude:
+          - os: ubuntu-latest
+            python: '3.9'
+        include:
+          - os: ubuntu-24.04
+            python: '3.9'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
