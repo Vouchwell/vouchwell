@@ -70,13 +70,27 @@ jobs:
     # The Python SDK against its own tests and, with Node present, against the
     # real CLI and core in both directions: a log Python wrote must pass
     # `vw verify` and `vw check`, and one JavaScript wrote must verify in
-    # Python. 3.9 is the oldest version the package claims.
+    # Python. 3.9 is the oldest version the package claims (requires-python in
+    # sdk/python/pyproject.toml), so it stays in the matrix on both platforms.
+    #
+    # On Linux, 3.9 runs on a pinned ubuntu-24.04: actions/python-versions has
+    # no 3.9 build for Ubuntu 26.04, which ubuntu-latest became in November
+    # 2026, so setup-python fails there before anything runs. 24.04 is the
+    # newest Ubuntu with one (3.9.25). When 24.04 runners are retired, 3.9 has
+    # nowhere left to run on Linux and the claim has to move up with it.
+    # Windows still installs 3.9 (3.9.13, the last release with a Windows build).
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
         python: ['3.9', '3.13']
+        exclude:
+          - os: ubuntu-latest
+            python: '3.9'
+        include:
+          - os: ubuntu-24.04
+            python: '3.9'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
