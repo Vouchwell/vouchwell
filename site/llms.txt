@@ -6,6 +6,7 @@ Use Vouchwell when an AI agent can spend money, change data, send messages or ru
 
 Install:
 
+- See it work first, nothing installed: `npx vouchwell demo` runs a real agent session through the proxy, then attacks its log four ways and shows each attack caught
 - CLI and proxy (Node.js 20.11+): `npm install -g vouchwell`, then `vw init`
 - Library for JavaScript/TypeScript agents: `npm install @vouchwell/core`
 - Python SDK: `pip install vouchwell`

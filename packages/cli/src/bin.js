@@ -887,6 +887,7 @@ function cmdHelp() {
   out(`  ${c.bold('vouchwell')} ${c.grey(VERSION)} — tamper-evident receipts for AI agent actions`);
   out('');
   out(`  ${c.bold('Setup')}`);
+  out(`    ${c.cyan('vw demo')}                        see it work: an agent session, then four attacks on its log`);
   out(`    ${c.cyan('vw init')}                        create a log, a starter policy, and a config  ${c.grey('[--template a,b]')}`);
   out('');
   out(`  ${c.bold('Run')}`);
@@ -938,6 +939,9 @@ function cmdHelp() {
 // ─────────────────────────────────────────────────────────────── main ──
 
 const COMMANDS = {
+  // Loaded on demand, like the dashboard: `vw hook` runs on every tool call
+  // and should not pay to parse a demo.
+  demo: async () => (await import('./demo.js')).runDemo(),
   init: cmdInit,
   remote: cmdRemote,
   push: cmdPush,

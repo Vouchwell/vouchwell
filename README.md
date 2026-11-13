@@ -49,13 +49,13 @@ append-only log that an outside party can verify without trusting you.
 ## See it in one command
 
 ```bash
-git clone https://github.com/vouchwell/vouchwell && cd vouchwell
-npm install
-npm run demo
+npx vouchwell demo
 ```
 
-The demo runs a real agent session through a real proxy, then attacks the
-resulting log four ways and shows each attack being caught:
+Nothing to install or clone, and nothing written to your directory. The demo
+runs a real agent session through a real proxy, then attacks the resulting log
+four ways and shows each attack being caught (`npm run demo` does the same from
+a checkout):
 
 ```
 1. An agent works through a queue of tasks

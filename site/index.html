@@ -360,7 +360,7 @@
 <!-- ── demo ─────────────────────────────────────────────────────────── -->
 <section class="wrap demo" id="demo">
   <h2>See it run.</h2>
-  <p class="lede measure">Thirty seconds of <code>npm run demo</code>, unedited: an agent works through a queue, policy blocks three actions, then the log is attacked four ways and every attack is caught.</p>
+  <p class="lede measure">Thirty seconds of the demo, unedited — run it yourself with <code>npx vouchwell demo</code>, nothing to install: an agent works through a queue, policy blocks three actions, then the log is attacked four ways and every attack is caught.</p>
   <video controls muted playsinline preload="none" poster="demo-poster.jpg" src="demo.mp4" aria-label="Terminal recording of npm run demo"></video>
 </section>
 
@@ -809,7 +809,9 @@ $ vw proxy --namespace crm -- npx -y @acme/mcp-crm
     <div>
       <div class="term" id="install-npm" hidden style="margin-bottom:18px">
         <div class="term-bar"><span>from npm</span><span style="margin-left:auto">v<span id="npm-version"></span></span></div>
-<pre>$ npm install -g vouchwell
+<pre>$ npx vouchwell demo        <span style="color:var(--ink-3)"># see it work first</span>
+
+$ npm install -g vouchwell
 $ vw init
 $ vw proxy --namespace crm -- npx -y @acme/mcp-crm</pre>
       </div>
