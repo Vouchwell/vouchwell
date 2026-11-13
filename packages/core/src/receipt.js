@@ -102,10 +102,15 @@ export function openSeal(sealed, saltB64u, value) {
 
 /**
  * @typedef {object} Actor
- * @property {string} agent      Model or agent identifier, e.g. `claude-opus-5`.
+ * @property {string} agent      Model or agent identifier, e.g. `support-bot`. The
+ *   proxy uses the MCP client's name when none is configured.
  * @property {string} runtime    What produced the receipt, e.g. `vouchwell-proxy/0.1.0`.
  * @property {string} session    Groups the receipts of one agent run.
  * @property {string} principal  Whose authority the agent acted under.
+ * @property {{ name: string, version?: string }} [client]  What the MCP client
+ *   called itself in its `initialize` request: its own claim, recorded as made.
+ *   Optional, and not checked by verifiers, so receipts with it verify with
+ *   versions that predate it.
  */
 
 /**

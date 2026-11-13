@@ -280,7 +280,8 @@ exactly.
 {
   "v": 1, "log": "lg_14b9c3dd", "seq": 7, "prev": "3fa4a544…",
   "ts": "2026-09-20T17:19:00.057Z", "phase": "intent",
-  "actor": { "agent": "claude-opus-5", "principal": "ops@acme.test", … },
+  "actor": { "agent": "support-bot", "client": { "name": "claude-code", "version": "2.1.0" },
+             "principal": "ops@acme.test", … },
   "action": {
     "kind": "tool_call", "target": "ops.refund",
     "metrics": { "amount_usd": 45 },
@@ -290,6 +291,10 @@ exactly.
   "attest": { "alg": "ed25519", "kid": "pw106d7bf7…", "sig": "…" }
 }
 ```
+
+`actor.client` is what the MCP client called itself when it connected, as it
+said it; `actor.agent` is what your config names, or that client's name when
+it names none.
 
 Four properties, each because a specific dispute is foreseeable:
 

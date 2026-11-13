@@ -12,6 +12,7 @@ everyone who installed from npm, for the first time:
 
 - **`npx vouchwell demo`:** the whole demo, nothing to install.
 - **`vw dash` fixed** for installs from npm.
+- **Receipts name the real client** (Cursor, Claude Code, …), not a default.
 - **Easier to find** on npm, npm.io and PyPI.
 
 ### Added
@@ -25,6 +26,13 @@ everyone who installed from npm, for the first time:
   and exits 1, which makes `npm run demo` in CI and the release workflow a
   real end-to-end test. The tampered copies it attacks, which hold a copy of
   the demo's signing key, are deleted as it goes.
+- **Receipts name the MCP client that sent the call.** `vw proxy` reads the
+  `clientInfo` an MCP client sends when it connects and records it in every
+  receipt as `actor.client` (`{ "name": "cursor-vscode", "version": "1.2.3" }`):
+  the client's own claim, strings only and length-bounded. When the config
+  names no agent, `actor.agent` is that client's name rather than a fixed
+  default. The field is optional and inside the signature; the 0.8.0 CLI, the
+  Python SDK and the website's verifier all verify receipts that carry it.
 - **A `test` script in every package,** so `npm test -w @vouchwell/core` runs
   one package's tests.
 
@@ -50,6 +58,12 @@ everyone who installed from npm, for the first time:
 - **The CLI's npm page** leads with `npx vouchwell demo`, covers Claude Code
   (plugin and hook), Codex, Cursor and `vw mcp`, and wraps a real MCP server
   in its example rather than the fictional `@acme/mcp-crm`.
+- **`vw init` no longer writes `"agent": "claude-opus-5"`** into every new
+  config, whatever agent was in use: every receipt from such a config named
+  that model. New configs name no agent, so the client's name is used. A
+  config that still has the old value keeps it, since it is the operator's
+  config, but `vw proxy` now says once at startup that it is the old
+  placeholder and how to change it.
 - **The website's top strip** links to Axonscape alone.
 
 ## 0.8.0 — 2026-10-13
