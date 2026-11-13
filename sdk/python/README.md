@@ -11,11 +11,8 @@ writes exactly the format the `vouchwell` CLI reads:
 CI runs both directions against the real CLI on every commit.
 
 ```bash
-pip install "vouchwell @ git+https://github.com/vouchwell/vouchwell#subdirectory=sdk/python"
+pip install vouchwell
 ```
-
-That installs straight from this repository. The package is not on PyPI yet;
-once it is, `pip install vouchwell` will do the same.
 
 Python 3.9+. The one dependency is `cryptography`, for Ed25519.
 
