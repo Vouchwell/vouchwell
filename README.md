@@ -49,13 +49,13 @@ append-only log that an outside party can verify without trusting you.
 ## See it in one command
 
 ```bash
-git clone https://github.com/vouchwell/vouchwell && cd vouchwell
-npm install
-npm run demo
+npx vouchwell demo
 ```
 
-The demo runs a real agent session through a real proxy, then attacks the
-resulting log four ways and shows each attack being caught:
+Nothing to install or clone, and nothing written to your directory. The demo
+runs a real agent session through a real proxy, then attacks the resulting log
+four ways and shows each attack being caught (`npm run demo` does the same from
+a checkout):
 
 ```
 1. An agent works through a queue of tasks
@@ -280,7 +280,8 @@ exactly.
 {
   "v": 1, "log": "lg_14b9c3dd", "seq": 7, "prev": "3fa4a544…",
   "ts": "2026-09-20T17:19:00.057Z", "phase": "intent",
-  "actor": { "agent": "claude-opus-5", "principal": "ops@acme.test", … },
+  "actor": { "agent": "support-bot", "client": { "name": "claude-code", "version": "2.1.0" },
+             "principal": "ops@acme.test", … },
   "action": {
     "kind": "tool_call", "target": "ops.refund",
     "metrics": { "amount_usd": 45 },
@@ -290,6 +291,10 @@ exactly.
   "attest": { "alg": "ed25519", "kid": "pw106d7bf7…", "sig": "…" }
 }
 ```
+
+`actor.client` is what the MCP client called itself when it connected, as it
+said it; `actor.agent` is what your config names, or that client's name when
+it names none.
 
 Four properties, each because a specific dispute is foreseeable:
 
@@ -487,7 +492,7 @@ install, no token. It fails the build if a bundle was edited, truncated, or
 signed by a key other than yours:
 
 ```yaml
-- uses: Vouchwell/vouchwell/verify@v0.8.0
+- uses: Vouchwell/vouchwell/verify@v0.8.1
   with:
     log-keys: evidence/log-keys.json   # from `vw keys`
 ```

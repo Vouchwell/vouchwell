@@ -6,7 +6,7 @@ import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { ProofLog, Policy, entryHash } from '@vouchwell/core';
-import { McpProxy, extractMetrics } from '../src/proxy.js';
+import { McpProxy, extractMetrics, clientIdentity } from '../src/proxy.js';
 import { LineFramer, isRequest, isResponse, toolRefusal } from '../src/jsonrpc.js';
 import { denyingApprover } from '../src/approve.js';
 
@@ -21,6 +21,7 @@ const SERVER = fileURLToPath(new URL('../../../examples/fake-mcp-server.js', imp
  * @param {any} [opts.approver]
  * @param {Record<string, any>} [opts.metrics]
  * @param {boolean} [opts.monitor]
+ * @param {{ agent?: string, session: string, principal: string }} [opts.actor]
  * @param {(proxy: McpProxy) => void} [opts.onProxy]
  */
 async function run(opts) {
@@ -40,7 +41,7 @@ async function run(opts) {
   const proxy = new McpProxy({
     log,
     policy: new Policy({ version: 1, name: 'test', ...opts.policy }),
-    actor: { agent: 'claude-opus-5', session: 'sess_test', principal: 'ops@acme.test' },
+    actor: opts.actor ?? { agent: 'claude-opus-5', session: 'sess_test', principal: 'ops@acme.test' },
     approver: opts.approver ?? denyingApprover(),
     command: process.execPath,
     args: [SERVER],
@@ -615,4 +616,82 @@ test('trailing slashes are trimmed in linear time', async () => {
   const t = performance.now();
   assert.equal(trimSlashes(hostile), hostile);
   assert.ok(performance.now() - t < 200, 'a long run of slashes must not be slow');
+});
+
+/** @param {number} id @param {unknown} clientInfo */
+const initialize = (id, clientInfo) => ({
+  jsonrpc: '2.0',
+  id,
+  method: 'initialize',
+  params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo },
+});
+
+test('receipts name the MCP client that connected, and use its name when no agent is configured', async () => {
+  const { byId, log } = await run({
+    policy: { rules: [] },
+    actor: { session: 'sess_client', principal: 'ops@acme.test' },
+    send: [initialize(1, { name: 'cursor-vscode', version: '1.2.3', title: 'Cursor' }), call(2, 'query', { sql: 'SELECT 1' })],
+  });
+  // The initialize request went upstream untouched and its answer came back.
+  assert.equal(byId.get(1)?.result?.serverInfo?.name, 'fake-ops-server');
+  assert.equal(byId.get(2)?.result?.isError, undefined);
+
+  const receipts = log.entries.filter((r) => r.action.target === 'ops.query');
+  assert.ok(receipts.length >= 1);
+  for (const r of receipts) {
+    assert.equal(r.actor.agent, 'cursor-vscode');
+    assert.deepEqual(r.actor.client, { name: 'cursor-vscode', version: '1.2.3' });
+    assert.match(r.actor.runtime, /^vouchwell-proxy\//);
+  }
+  // The new field is inside the signature, and the log still verifies end to end.
+  assert.equal(log.audit().ok, true);
+});
+
+test('a configured agent wins, and the client is still recorded beside it', async () => {
+  const { log } = await run({
+    policy: { rules: [] },
+    actor: { agent: 'support-bot', session: 'sess_client', principal: 'ops@acme.test' },
+    send: [initialize(1, { name: 'claude-code', version: '2.1.0' }), call(2, 'query', { sql: 'SELECT 1' })],
+  });
+  const r = log.entries.find((e) => e.action.target === 'ops.query');
+  assert.equal(r.actor.agent, 'support-bot');
+  assert.deepEqual(r.actor.client, { name: 'claude-code', version: '2.1.0' });
+});
+
+test('with no agent configured and no client name, receipts say unknown-agent and carry no client', async () => {
+  const { log } = await run({
+    policy: { rules: [] },
+    actor: { session: 'sess_client', principal: 'ops@acme.test' },
+    send: [initialize(1, { version: '9' }), call(2, 'query', { sql: 'SELECT 1' })],
+  });
+  const r = log.entries.find((e) => e.action.target === 'ops.query');
+  assert.equal(r.actor.agent, 'unknown-agent');
+  assert.equal('client' in r.actor, false);
+});
+
+test('a refused call names the client too', async () => {
+  const { byId, log } = await run({
+    policy: { defaults: { outcome: 'deny' }, rules: [] },
+    actor: { session: 'sess_client', principal: 'ops@acme.test' },
+    send: [initialize(1, { name: 'windsurf', version: '1.0' }), call(2, 'query', { sql: 'SELECT 1' })],
+  });
+  assert.equal(byId.get(2)?.result?.isError, true);
+  const r = log.entries.find((e) => e.action.target === 'ops.query');
+  assert.equal(r.decision.outcome, 'deny');
+  assert.equal(r.actor.agent, 'windsurf');
+  assert.deepEqual(r.actor.client, { name: 'windsurf', version: '1.0' });
+});
+
+test('clientIdentity keeps a bounded name and version, and nothing else', () => {
+  assert.deepEqual(clientIdentity({ name: '  cursor  ', version: ' 1.0 ', title: 'Cursor', extra: { a: 1 } }), { name: 'cursor', version: '1.0' });
+  assert.deepEqual(clientIdentity({ name: 'x' }), { name: 'x' });
+  assert.deepEqual(clientIdentity({ name: 'x', version: 3 }), { name: 'x' });
+  assert.equal(clientIdentity({ name: '   ' }), undefined);
+  assert.equal(clientIdentity({ name: 42 }), undefined);
+  assert.equal(clientIdentity('cursor'), undefined);
+  assert.equal(clientIdentity(null), undefined);
+  assert.equal(clientIdentity(undefined), undefined);
+  const long = clientIdentity({ name: 'n'.repeat(1000), version: 'v'.repeat(1000) });
+  assert.equal(long?.name.length, 128);
+  assert.equal(long?.version?.length, 64);
 });

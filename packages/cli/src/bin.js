@@ -27,6 +27,8 @@ const { version: VERSION } = createRequire(import.meta.url)('../package.json');
 // New projects get these names; one set up before the rename keeps its
 // proofwire.* files (see legacy-paths.js).
 const CONFIG = 'vouchwell.config.json';
+/** What `vw init` wrote as actor.agent in every config before 0.8.1. */
+const INIT_PLACEHOLDER_AGENT = 'claude-opus-5';
 const POLICY = 'vouchwell.policy.json';
 
 /**
@@ -112,11 +114,12 @@ const STARTER_POLICY = `{
 }
 `;
 
+// No `agent`: left out, `vw proxy` names the agent by the MCP client's own
+// name from its `initialize` request. Set one to name a model or a bot.
 const STARTER_CONFIG = {
   log: '.vouchwell',
   policy: POLICY,
   actor: {
-    agent: 'claude-opus-5',
     principal: process.env.USER || process.env.USERNAME || 'unknown',
   },
   approval: { mode: 'deny' },
@@ -251,6 +254,17 @@ async function cmdProxy(args) {
   // seeing it. `--enforce` wins over a config file that says otherwise.
   const monitor = !args.enforce && (args.monitor === true || config.monitor === true);
 
+  // Before 0.8.1, `vw init` wrote this into every config whatever the agent
+  // was. It is still the operator's config, so it still wins; say so, since
+  // most people never chose it.
+  if (!args.agent && config.actor?.agent === INIT_PLACEHOLDER_AGENT) {
+    err(c.grey(
+      `vouchwell: actor.agent is "${INIT_PLACEHOLDER_AGENT}", the placeholder vw init used to write. ` +
+        `Receipts also name the client that connects (actor.client). Remove actor.agent from ${CONFIG} ` +
+        `to record the client's name as the agent, or set it to the agent you run.`,
+    ));
+  }
+
   let sink = null;
   if (remote) {
     sink = new RemoteSink({
@@ -267,7 +281,8 @@ async function cmdProxy(args) {
     log,
     policy,
     actor: {
-      agent: args.agent ?? config.actor?.agent ?? 'unknown-agent',
+      // Unset, the proxy uses the MCP client's own name, then 'unknown-agent'.
+      agent: args.agent ?? config.actor?.agent,
       session: args.session ?? 'sess_' + Date.now().toString(36),
       principal: args.principal ?? config.actor?.principal ?? 'unknown',
     },
@@ -887,6 +902,7 @@ function cmdHelp() {
   out(`  ${c.bold('vouchwell')} ${c.grey(VERSION)} — tamper-evident receipts for AI agent actions`);
   out('');
   out(`  ${c.bold('Setup')}`);
+  out(`    ${c.cyan('vw demo')}                        see it work: an agent session, then four attacks on its log`);
   out(`    ${c.cyan('vw init')}                        create a log, a starter policy, and a config  ${c.grey('[--template a,b]')}`);
   out('');
   out(`  ${c.bold('Run')}`);
@@ -938,6 +954,9 @@ function cmdHelp() {
 // ─────────────────────────────────────────────────────────────── main ──
 
 const COMMANDS = {
+  // Loaded on demand, like the dashboard: `vw hook` runs on every tool call
+  // and should not pay to parse a demo.
+  demo: async () => (await import('./demo.js')).runDemo(),
   init: cmdInit,
   remote: cmdRemote,
   push: cmdPush,

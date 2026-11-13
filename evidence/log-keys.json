@@ -4,5 +4,11 @@
     "publicKey": "7S5Z888HKkp3GHzGxYA7PVgmL_C6UBAqsjx3g63kQQA",
     "log": "lg_f221159d4ee6af35",
     "added": "2026-10-12"
+  },
+  {
+    "kid": "pw14b38a242aac911f54708c2d1ba6598ad",
+    "publicKey": "mTLQvCJJc1ywPGoDCrAVq5pXO2BcW-tcOQuZGZUjTiw",
+    "log": "lg_07ff574a807ce415",
+    "added": "2026-11-13"
   }
 ]

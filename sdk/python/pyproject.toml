@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vouchwell"
-version = "0.8.0"
+version = "0.8.1"
 description = "Tamper-evident receipts for AI agent actions. Python SDK, wire-compatible with the vouchwell CLI."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "Apache-2.0"
 authors = [{ name = "IdeaboticsAI" }]
-keywords = ["ai-agents", "audit", "transparency-log", "merkle", "ed25519", "eu-ai-act"]
+keywords = ["ai-agents", "agent-security", "guardrails", "mcp", "langchain", "openai-agents", "audit-log", "tamper-evident", "transparency-log", "merkle", "ed25519", "eu-ai-act"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
@@ -35,7 +35,8 @@ test = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/vouchwell/vouchwell"
+Homepage = "https://vouchwell.axonscape.com"
+Repository = "https://github.com/Vouchwell/vouchwell"
 Source = "https://github.com/vouchwell/vouchwell/tree/main/sdk/python"
 Issues = "https://github.com/vouchwell/vouchwell/issues"
 

@@ -25,6 +25,26 @@ import { History, redact, entryHash, globMatch } from '@vouchwell/core';
 const RUNTIME = `vouchwell-proxy/${createRequire(import.meta.url)('../package.json').version}`;
 
 /**
+ * What an MCP client says it is, from `params.clientInfo` in its `initialize`
+ * request, made fit for a signed receipt: a name and a version, strings only,
+ * trimmed and bounded, nothing else carried over. It is the client's own
+ * claim and is recorded as one. It names the program (`cursor-vscode`,
+ * `claude-code`), not the model behind it.
+ *
+ * @param {unknown} info
+ * @returns {{ name: string, version?: string } | undefined}
+ */
+export function clientIdentity(info) {
+  if (!info || typeof info !== 'object') return undefined;
+  /** @param {unknown} v @param {number} max */
+  const text = (v, max) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
+  const name = text(/** @type {any} */ (info).name, 128);
+  if (!name) return undefined;
+  const version = text(/** @type {any} */ (info).version, 64);
+  return version ? { name, version } : { name };
+}
+
+/**
  * Pull a dotted path out of an object.
  *
  * @param {unknown} obj
@@ -219,7 +239,11 @@ export function launchSpec(command, args, platform = process.platform, which = (
  * @typedef {object} ProxyOptions
  * @property {import('@vouchwell/core').ProofLog} log
  * @property {import('@vouchwell/core').Policy} policy
- * @property {{ agent: string, session: string, principal: string }} actor
+ * @property {{ agent?: string, session: string, principal: string }} actor
+ *   `agent` as the operator configured it. Left out, receipts name the agent
+ *   by the MCP client's own name from its `initialize` request, and failing
+ *   that `unknown-agent`. Every receipt also carries that client's claim as
+ *   `actor.client`, whatever `agent` says.
  * @property {(req: any) => Promise<{approved: boolean, by: string, note?: string}>} approver
  * @property {string} command
  * @property {string[]} args
@@ -248,7 +272,25 @@ export class McpProxy extends EventEmitter {
     /** @type {import('node:child_process').ChildProcessWithoutNullStreams|null} */
     this.child = null;
     this.monitor = opts.monitor === true;
+    /** What the MCP client said it is when it initialized; see `clientIdentity`. */
+    this.client = undefined;
     this.stats = { forwarded: 0, denied: 0, escalated: 0, approved: 0, errors: 0, wouldDeny: 0, wouldEscalate: 0 };
+  }
+
+  /**
+   * The actor a receipt names. `agent` is what the operator configured, or,
+   * when nothing was, the client's own name, the best identifier there is.
+   * `client` is the client's claim as it made it, so a receipt shows which
+   * program sent a call even when the configured agent says something else.
+   */
+  _actor() {
+    const { agent, ...rest } = this.opts.actor;
+    return {
+      ...rest,
+      agent: agent || this.client?.name || 'unknown-agent',
+      runtime: RUNTIME,
+      ...(this.client ? { client: this.client } : {}),
+    };
   }
 
   /**
@@ -334,6 +376,10 @@ export class McpProxy extends EventEmitter {
    * @param {NodeJS.WritableStream} stdout
    */
   async _handleClientMessage(message, child, stdout) {
+    // Read, never changed: the request goes upstream exactly as sent.
+    if (isRequest(message) && message.method === 'initialize') {
+      this.client = clientIdentity(message.params?.clientInfo);
+    }
     if (!isRequest(message) || message.method !== 'tools/call') {
       child.stdin.write(encode(message));
       return;
@@ -341,7 +387,7 @@ export class McpProxy extends EventEmitter {
 
     const target = this._qualify(message.params?.name ?? 'unknown');
     const params = message.params?.arguments ?? {};
-    const actor = { ...this.opts.actor, runtime: RUNTIME };
+    const actor = this._actor();
     const metrics = extractMetrics(this.opts.metrics ?? {}, target, params);
 
     let decision = this.policy.decide(

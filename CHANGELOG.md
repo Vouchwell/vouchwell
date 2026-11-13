@@ -5,6 +5,67 @@ up to 0.5.0 `proofwire` and `@proof_wire/*` — release together at the same ver
 
 ## Unreleased
 
+## 0.8.1 — 2026-11-13
+
+Seeing Vouchwell work no longer needs a clone, and `vw dash` works for
+everyone who installed from npm, for the first time:
+
+- **`npx vouchwell demo`:** the whole demo, nothing to install.
+- **`vw dash` fixed** for installs from npm.
+- **Receipts name the real client** (Cursor, Claude Code, …), not a default.
+- **Easier to find** on npm, npm.io and PyPI.
+
+### Added
+
+- **`vw demo`.** The demo that `npm run demo` ran from a checkout now ships
+  with the CLI: a real agent session through a real proxy, three actions
+  blocked, then four attacks on the log, each caught. `npx vouchwell demo`
+  runs it with nothing installed and writes only to a temporary directory.
+  Every outcome is now checked as well as printed: if a call is allowed or
+  blocked against expectation, or an attack goes undetected, the demo says so
+  and exits 1, which makes `npm run demo` in CI and the release workflow a
+  real end-to-end test. The tampered copies it attacks, which hold a copy of
+  the demo's signing key, are deleted as it goes.
+- **Receipts name the MCP client that sent the call.** `vw proxy` reads the
+  `clientInfo` an MCP client sends when it connects and records it in every
+  receipt as `actor.client` (`{ "name": "cursor-vscode", "version": "1.2.3" }`):
+  the client's own claim, strings only and length-bounded. When the config
+  names no agent, `actor.agent` is that client's name rather than a fixed
+  default. The field is optional and inside the signature; the 0.8.0 CLI, the
+  Python SDK and the website's verifier all verify receipts that carry it.
+- **A `test` script in every package,** so `npm test -w @vouchwell/core` runs
+  one package's tests.
+
+### Fixed
+
+- **`vw dash` failed on every install from npm**, in every release so far,
+  with "Cannot find package '@vouchwell/dashboard'". The CLI loads the
+  dashboard but did not list it as a dependency; in this repository the
+  workspaces link every package to every other, so nothing noticed. The CLI
+  now depends on it, and a new test fails if any package imports something it
+  does not declare.
+- **The Python SDK's README said it was not on PyPI** and installed from
+  git. It has been on PyPI since 0.6.0, and that README is the PyPI page:
+  `pip install vouchwell`.
+
+### Changed
+
+- **npm and PyPI metadata.** Keywords on every package for what people search
+  for (`mcp-proxy`, `mcp-security`, `mcp-gateway`, `agent-security`,
+  `guardrails`, `claude-code`, `cursor`, `codex`, `audit-log`,
+  `tamper-evident`, …); the website as the homepage; and a CLI description that
+  names the coding agents it works with.
+- **The CLI's npm page** leads with `npx vouchwell demo`, covers Claude Code
+  (plugin and hook), Codex, Cursor and `vw mcp`, and wraps a real MCP server
+  in its example rather than the fictional `@acme/mcp-crm`.
+- **`vw init` no longer writes `"agent": "claude-opus-5"`** into every new
+  config, whatever agent was in use: every receipt from such a config named
+  that model. New configs name no agent, so the client's name is used. A
+  config that still has the old value keeps it, since it is the operator's
+  config, but `vw proxy` now says once at startup that it is the old
+  placeholder and how to change it.
+- **The website's top strip** links to Axonscape alone.
+
 ## 0.8.0 — 2026-10-13
 
 Vouchwell records more coding agents, and its tools come to the agent:

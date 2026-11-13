@@ -1,8 +1,8 @@
 {
   "name": "vouchwell",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "type": "module",
-  "description": "Tamper-evident receipts for AI agent actions. Policy, proof, and audit for MCP.",
+  "description": "Guardrails and tamper-evident receipts for AI agents. Policy-gate every MCP, Claude Code, Codex and Cursor tool call, then prove what ran.",
   "mcpName": "io.github.Vouchwell/vouchwell",
   "license": "Apache-2.0",
   "author": "IdeaboticsAI",
@@ -11,17 +11,29 @@
     "url": "git+https://github.com/Vouchwell/vouchwell.git",
     "directory": "packages/cli"
   },
-  "homepage": "https://github.com/Vouchwell/vouchwell#readme",
+  "homepage": "https://vouchwell.axonscape.com",
   "bugs": {
     "url": "https://github.com/Vouchwell/vouchwell/issues"
   },
   "keywords": [
     "mcp",
+    "mcp-proxy",
+    "mcp-security",
+    "mcp-gateway",
+    "model-context-protocol",
     "ai-agents",
-    "audit",
-    "compliance",
+    "agent-security",
+    "guardrails",
+    "claude-code",
+    "cursor",
+    "codex",
+    "coding-agent",
+    "audit-log",
+    "tamper-evident",
     "transparency-log",
-    "eu-ai-act"
+    "compliance",
+    "eu-ai-act",
+    "cli"
   ],
   "bin": {
     "vw": "./src/bin.js",
@@ -30,9 +42,13 @@
   "files": [
     "src"
   ],
+  "scripts": {
+    "test": "node --no-warnings=ExperimentalWarning --test"
+  },
   "dependencies": {
-    "@vouchwell/core": "0.8.0",
-    "@vouchwell/proxy": "0.8.0"
+    "@vouchwell/core": "0.8.1",
+    "@vouchwell/dashboard": "0.8.1",
+    "@vouchwell/proxy": "0.8.1"
   },
   "engines": {
     "node": ">=20.11"
