@@ -15,15 +15,19 @@ WORKDIR /app
 COPY package.json ./
 COPY packages/core/package.json    packages/core/
 COPY packages/proxy/package.json   packages/proxy/
+COPY packages/dashboard/package.json packages/dashboard/
 COPY packages/cli/package.json     packages/cli/
 COPY packages/server/package.json  packages/server/
 
 # `npm install` here only links the workspaces together; there is nothing to
-# fetch from the registry.
-RUN npm install --omit=dev --no-audit --no-fund
+# fetch from the registry, and --offline makes sure of it. Every workspace a
+# copied package depends on has to be copied too (the CLI needs the
+# dashboard), or npm would go looking for that version on the registry.
+RUN npm install --omit=dev --offline --no-audit --no-fund
 
 COPY packages/core   packages/core
 COPY packages/proxy  packages/proxy
+COPY packages/dashboard packages/dashboard
 COPY packages/cli    packages/cli
 COPY packages/server packages/server
 

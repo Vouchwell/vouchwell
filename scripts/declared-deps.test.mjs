@@ -52,6 +52,30 @@ test('every published package declares each package its source imports', () => {
   assert.deepEqual(problems, []);
 });
 
+// The hub image installs with --offline: npm only links the workspaces it was
+// given. A workspace dependency missing from the Dockerfile fails the image
+// build, which only CI's docker job runs; this fails `npm test` instead. It
+// caught exactly that when the CLI started depending on the dashboard.
+test('the Dockerfile copies every workspace its packages depend on', () => {
+  const dockerfile = fs.readFileSync(path.join(ROOT, 'Dockerfile'), 'utf8');
+  const copied = new Set([...dockerfile.matchAll(/^COPY\s+packages\/([\w-]+)\/package\.json\s/gm)].map((m) => m[1]));
+  const sources = new Set([...dockerfile.matchAll(/^COPY\s+packages\/([\w-]+)\s+packages\/\1\s*$/gm)].map((m) => m[1]));
+  assert.ok(copied.size > 0, 'expected COPY lines for workspace package.json files');
+  assert.deepEqual([...sources].sort(), [...copied].sort(), 'each workspace whose package.json is copied must have its source copied too');
+
+  /** @type {Map<string, string>} package name -> workspace directory name */
+  const dirOf = new Map(PACKAGES.map((rel) => [JSON.parse(fs.readFileSync(path.join(ROOT, rel, 'package.json'), 'utf8')).name, path.basename(rel)]));
+  const missing = [];
+  for (const dir of copied) {
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'packages', dir, 'package.json'), 'utf8'));
+    for (const dep of Object.keys(pkg.dependencies ?? {})) {
+      const depDir = dirOf.get(dep);
+      if (depDir && !copied.has(depDir)) missing.push(`${pkg.name} depends on ${dep}, but the Dockerfile does not copy packages/${depDir}`);
+    }
+  }
+  assert.deepEqual(missing, []);
+});
+
 test('the scan sees dynamic imports, which is how the CLI loads the dashboard', () => {
   const cli = importsIn(path.join(ROOT, 'packages/cli/src'));
   assert.ok(cli.has('@vouchwell/dashboard'), 'expected to find the dashboard import in the CLI');
