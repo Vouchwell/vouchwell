@@ -98,13 +98,7 @@
   nav a { color: var(--ink-2); text-decoration: none; font-size: .86rem; font-weight: 500; }
   nav a:hover { color: var(--ink); }
   .bar .gh { margin-left: auto; }
-  /* Sign in and Register: the Axonscape account (signin.html, register.html). */
-  .bar .signin { color: var(--ink-2); text-decoration: none; font: 500 .86rem var(--sans); }
-  .bar .signin:hover { color: var(--ink); }
   @media (max-width: 640px) { nav a.opt { display: none; } .bar { gap: 14px; } }
-  /* The header stays one row: Sign in shows where it fits, Register down to a phone, and both are in the footer. */
-  @media (max-width: 779px) { .bar .signin { display: none; } }
-  @media (max-width: 480px), (min-width: 641px) and (max-width: 719px) { .bar .reg { display: none; } }
 
   /* ── buttons ── */
   .btn { display: inline-flex; align-items: center; gap: 8px; font-size: .84rem; font-weight: 700; letter-spacing: .01em; padding: 10px 16px; border-radius: 3px; text-decoration: none; border: 1px solid var(--verify); cursor: pointer; font-family: var(--sans); line-height: 1.2; }
@@ -311,8 +305,6 @@
       <a class="opt" href="#start">Start</a>
     </nav>
     <a class="btn btn-ghost gh" href="https://github.com/vouchwell/vouchwell">GitHub</a>
-    <a class="signin" href="signin.html">Sign in</a>
-    <a class="btn btn-solid reg" href="register.html">Register</a>
   </div>
 </header>
 
@@ -865,7 +857,6 @@ $ npm run vw -- proxy --namespace crm -- npx -y @acme/mcp-crm</pre>
         <li><a href="https://github.com/vouchwell/vouchwell/issues">Issues</a></li>
         <li><a href="https://github.com/vouchwell/vouchwell/blob/main/SECURITY.md">Security policy</a></li>
         <li><a href="https://github.com/vouchwell/vouchwell/blob/main/evidence/README.md">How this was built</a></li>
-        <li><a href="signin.html">Sign in</a> · <a href="register.html">Register</a></li>
       </ul>
     </div>
     <div>
