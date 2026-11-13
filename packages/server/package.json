@@ -10,10 +10,24 @@
     "url": "git+https://github.com/Vouchwell/vouchwell.git",
     "directory": "packages/server"
   },
-  "homepage": "https://github.com/Vouchwell/vouchwell#readme",
+  "homepage": "https://vouchwell.axonscape.com",
   "bugs": {
     "url": "https://github.com/Vouchwell/vouchwell/issues"
   },
+  "keywords": [
+    "mcp",
+    "ai-agents",
+    "agent-security",
+    "audit-log",
+    "tamper-evident",
+    "transparency-log",
+    "witness",
+    "approvals",
+    "multi-tenant",
+    "siem",
+    "compliance",
+    "self-hosted"
+  ],
   "main": "./src/app.js",
   "exports": {
     ".": "./src/app.js",
@@ -26,6 +40,9 @@
   "files": [
     "src"
   ],
+  "scripts": {
+    "test": "node --no-warnings=ExperimentalWarning --test"
+  },
   "dependencies": {
     "@vouchwell/core": "0.8.0"
   },

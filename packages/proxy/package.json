@@ -10,10 +10,23 @@
     "url": "git+https://github.com/Vouchwell/vouchwell.git",
     "directory": "packages/proxy"
   },
-  "homepage": "https://github.com/Vouchwell/vouchwell#readme",
+  "homepage": "https://vouchwell.axonscape.com",
   "bugs": {
     "url": "https://github.com/Vouchwell/vouchwell/issues"
   },
+  "keywords": [
+    "mcp",
+    "mcp-proxy",
+    "mcp-security",
+    "mcp-gateway",
+    "model-context-protocol",
+    "ai-agents",
+    "agent-security",
+    "guardrails",
+    "policy-engine",
+    "audit-log",
+    "tamper-evident"
+  ],
   "main": "./src/proxy.js",
   "exports": {
     ".": "./src/proxy.js",
@@ -24,6 +37,9 @@
   "files": [
     "src"
   ],
+  "scripts": {
+    "test": "node --no-warnings=ExperimentalWarning --test"
+  },
   "dependencies": {
     "@vouchwell/core": "0.8.0"
   },
