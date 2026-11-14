@@ -361,13 +361,16 @@ async function checkReceipt(receipt, keyring) {
 
 /**
  * Signatures, sequence numbers, chain links and monotonic timestamps over a
- * contiguous run.
+ * contiguous run. A timestamp that goes backwards is a warning, not an issue:
+ * clocks step back (NTP, a resumed VM), and failing on it called an honest
+ * log tampered. The same in @vouchwell/core and the Python SDK.
  *
  * @param {any[]} receipts
  * @param {Record<string, string>} keyring
  */
 async function verifyChain(receipts, keyring) {
   const issues = [];
+  const warnings = [];
   let prev = GENESIS_PREV;
   let expectedSeq = 0;
   let lastTs = null;
@@ -393,7 +396,7 @@ async function verifyChain(receipts, keyring) {
       });
     }
     if (lastTs && receipt.ts < lastTs) {
-      issues.push({
+      warnings.push({
         seq: receipt.seq,
         kind: 'time',
         message: `timestamp ${receipt.ts} precedes the previous entry's ${lastTs}`,
@@ -403,7 +406,7 @@ async function verifyChain(receipts, keyring) {
     prev = await entryHash(receipt);
     expectedSeq = receipt.seq + 1;
   }
-  return { issues, signed };
+  return { issues, warnings, signed };
 }
 
 /**
@@ -478,14 +481,16 @@ async function verifyCheckpoint(checkpoint, keyring, { minWitnesses = 0, trusted
  *
  * @param {any} bundle
  * @param {{ expectRoot?: string, minWitnesses?: number, trustedWitnesses?: Record<string, string> }} [opts]
- * @returns {Promise<{ ok: boolean, issues: string[], checked: number, summary: object|null,
- *   badSeqs: Set<number> }>}
+ * @returns {Promise<{ ok: boolean, issues: string[], warnings: string[], checked: number,
+ *   summary: object|null, badSeqs: Set<number> }>}
  */
 async function verifyBundleUnchecked(bundle, opts = {}) {
   /** @type {string[]} */
   const issues = [];
+  /** @type {string[]} */
+  const warnings = [];
   const badSeqs = new Set();
-  const empty = { checked: 0, summary: null, badSeqs };
+  const empty = { warnings, checked: 0, summary: null, badSeqs };
 
   // `proofwire.bundle`: written before the project was renamed Vouchwell
   // (0.5.0 and earlier). The label is not signed; what is inside verifies as ever.
@@ -649,6 +654,7 @@ async function verifyBundleUnchecked(bundle, opts = {}) {
         issues.push(`entry ${i.seq}: ${i.message}`);
         if (Number.isInteger(i.seq)) badSeqs.add(i.seq);
       }
+      for (const w of chain.warnings) warnings.push(`entry ${w.seq}: ${w.message}`);
     } else {
       for (const receipt of receipts) {
         const res = await checkReceipt(receipt, keyring);
@@ -671,6 +677,7 @@ async function verifyBundleUnchecked(bundle, opts = {}) {
   return {
     ok: issues.length === 0,
     issues,
+    warnings,
     checked,
     badSeqs,
     summary: {
@@ -755,6 +762,7 @@ export async function verifyBundle(bundle, opts = {}) {
     return {
       ok: false,
       issues: [`could not verify this bundle: ${err?.message ?? err}`],
+      warnings: [],
       checked: 0,
       summary: null,
       badSeqs: new Set(),

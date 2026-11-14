@@ -647,6 +647,7 @@ $ vw policy test vouchwell.policy.json
       <h3 class="ok" style="font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">Erasure vs. audit</h3>
       <p style="font-size:.97rem">A deletion request and an immutable audit trail are, on the face of it, two duties in direct conflict. Salted commitments dissolve it.</p>
       <p style="font-size:.97rem"><strong>Destroy the salts, keep the proof.</strong> Those payloads become permanently unopenable — by you, by a court, by whoever steals the directory in 2029 — while every signature, chain link and inclusion proof still verifies.</p>
+      <p style="font-size:.97rem">One thing stays: the redacted preview, which is signed into the receipt. Redaction masks keys, cards, emails and phone numbers, not names or addresses, so where arguments carry personal data, record with <code class="inl">"previews": "none"</code> and shredding is the whole erasure.</p>
       <div class="term">
         <div class="term-bar"><span>vw shred --before 2026-01-01 --yes</span></div>
 <pre><span class="ok">✓</span> shredded 1 payload commitment

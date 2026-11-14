@@ -252,7 +252,7 @@ class ProofLog:
                 continue
             if not verify_consistency(size, self.size, from_hex(cp["body"]["root"]), root, self.tree.consistency_proof(size)):
                 issues.append({"kind": "chain", "message": f"the log no longer extends the checkpoint signed at size {size} ({cp['body'].get('ts')}): history was rewritten"})
-        return {"ok": not issues, "size": self.size, "root": self.root, "issues": issues}
+        return {"ok": not issues, "size": self.size, "root": self.root, "issues": issues, "warnings": chain["warnings"]}
 
     def bundle(self, filter: Optional[Callable[[dict], bool]] = None) -> dict:
         """Evidence for a third party: receipts with inclusion proofs, the keys,
@@ -303,7 +303,7 @@ def verify_bundle(
     try:
         return _verify_bundle(bundle, expect_root, min_witnesses, trusted_witnesses)
     except Exception as err:  # a malformed bundle must fail verification, never crash it
-        return {"ok": False, "issues": [f"could not verify this bundle: {err}"], "checked": 0}
+        return {"ok": False, "issues": [f"could not verify this bundle: {err}"], "warnings": [], "checked": 0}
 
 
 def _verify_bundle(bundle: Any, expect_root: Optional[str], min_witnesses: int, trusted: Optional[dict]) -> dict:
@@ -311,16 +311,16 @@ def _verify_bundle(bundle: Any, expect_root: Optional[str], min_witnesses: int, 
     # "proofwire.bundle" is what the project wrote before it was renamed
     # Vouchwell (0.5.0 and earlier); the receipts inside verify as they always did.
     if not isinstance(bundle, dict) or bundle.get("kind") not in ("vouchwell.bundle", "proofwire.bundle") or bundle.get("v") != 1:
-        return {"ok": False, "issues": ["not a Vouchwell v1 bundle"], "checked": 0}
+        return {"ok": False, "issues": ["not a Vouchwell v1 bundle"], "warnings": [], "checked": 0}
     keyring = bundle.get("keyring") or {}
     try:
         root = from_hex(bundle.get("root"))
     except (ValueError, TypeError):
-        return {"ok": False, "issues": ["bundle root is not valid hex"], "checked": 0}
+        return {"ok": False, "issues": ["bundle root is not valid hex"], "warnings": [], "checked": 0}
     if expect_root and expect_root != bundle["root"]:
         issues.append(f"bundle root {bundle['root'][:16]}… does not match the expected {expect_root[:16]}…: you were shown a different history")
     if not isinstance(min_witnesses, int) or isinstance(min_witnesses, bool) or min_witnesses < 0:
-        return {"ok": False, "issues": [f"min_witnesses must be a non-negative integer, got {min_witnesses!r}"], "checked": 0}
+        return {"ok": False, "issues": [f"min_witnesses must be a non-negative integer, got {min_witnesses!r}"], "warnings": [], "checked": 0}
     pinned = trusted if isinstance(trusted, dict) else None
     if min_witnesses > 0 and pinned is None:
         issues.append(f"{min_witnesses} witness signature(s) required, but no trusted witness keys were supplied: a bundle's own keyring cannot vouch for its witnesses")
@@ -395,14 +395,16 @@ def _verify_bundle(bundle: Any, expect_root: Optional[str], min_witnesses: int, 
             "bundle's entries: nothing independent vouches for this history"
         )
 
+    warnings: list[str] = []
     if not bundle.get("partial"):
         chain = verify_chain(receipts, keyring)
         issues.extend(f"entry {i.get('seq')}: {i['message']}" for i in chain["issues"])
+        warnings.extend(f"entry {w.get('seq')}: {w['message']}" for w in chain["warnings"])
     else:
         for r in receipts:
             issues.extend(f"entry {i.get('seq')}: {i['message']}" for i in verify_receipt(r, keyring))
 
-    result = {"ok": not issues, "issues": issues, "checked": checked}
+    result = {"ok": not issues, "issues": issues, "warnings": warnings, "checked": checked}
     if witnessing:
         # Entries at or past this are signed by the log alone.
         result["witnessedSize"] = witnessed_size or 0

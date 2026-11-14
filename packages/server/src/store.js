@@ -256,9 +256,15 @@ export class Store {
     }
 
     if (args.batchId) {
+      // Batch ids are unique across the hub, not per log, so look them up
+      // the same way. A per-log lookup let another log's id through to the
+      // INSERT, which failed after the tree had already been appended to.
       const seen = this.db
-        .prepare('SELECT * FROM ingest_batches WHERE id = ? AND log_id = ?')
-        .get(args.batchId, args.logId);
+        .prepare('SELECT * FROM ingest_batches WHERE id = ?')
+        .get(args.batchId);
+      if (seen && seen.log_id !== log.id) {
+        throw new StoreError(409, 'batch_id_in_use', 'this batch id was already used for another log; send the batch with a new id');
+      }
       if (seen) {
         // A retry of a batch we already committed. Returning the original
         // result is what makes at-least-once delivery safe for the client.
@@ -314,6 +320,11 @@ export class Store {
           { expected: expectSeq, got: receipt.seq, head: log.head },
         );
       }
+      // verifyReceipt does not check `prev`'s type; the chain check below
+      // assumed a string and answered a non-string with a 500.
+      if (typeof receipt.prev !== 'string') {
+        throw new StoreError(422, 'receipt_rejected', `receipt ${receipt.seq} has no prev hash`, { seq: receipt.seq });
+      }
       if (receipt.prev !== expectPrev) {
         throw new StoreError(
           409,
@@ -330,6 +341,25 @@ export class Store {
       expectPrev = hash;
     }
 
+    try {
+      return this._commitBatch(log, prepared, tree, args.batchId);
+    } catch (err) {
+      // The cached tree is appended to inside the transaction, to compute the
+      // new root; a rollback does not undo that. Dropped, it is rebuilt from
+      // the database the next time, so it never runs ahead of what is stored.
+      this._trees.delete(log.id);
+      throw err;
+    }
+  }
+
+  /**
+   * @param {any} log
+   * @param {{ receipt: any, hash: string, leaf: Buffer }[]} prepared
+   * @param {MerkleTree} tree
+   * @param {string | undefined} batchId
+   * @private
+   */
+  _commitBatch(log, prepared, tree, batchId) {
     return transact(this.db, () => {
       const insert = this.db.prepare(
         `INSERT INTO receipts(
@@ -388,14 +418,14 @@ export class Store {
         )
         .run(log.org_id, today(), prepared.length, denials);
 
-      if (args.batchId) {
+      if (batchId) {
         this.db
           .prepare(
             `INSERT INTO ingest_batches(id, log_id, org_id, accepted, first_seq, last_seq, head, root, size, at)
              VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
-            args.batchId, log.id, log.org_id, prepared.length,
+            batchId, log.id, log.org_id, prepared.length,
             prepared[0].receipt.seq, prepared[prepared.length - 1].receipt.seq,
             head, root, size, receivedAt,
           );

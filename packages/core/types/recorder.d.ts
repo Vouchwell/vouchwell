@@ -104,6 +104,7 @@ export declare class Recorder {
         principal: string;
     };
     history: History;
+    _historySeen: number;
     /** Calls sent and not yet answered, for `finalize`. @type {Map<number, { target: string, params: unknown, decision: object, intent: any, startedAt: number }>} */
     pending: Map<number, {
         target: string;
@@ -160,6 +161,8 @@ export declare class Recorder {
         phase?: 'atomic' | 'intent' | 'outcome';
         ref?: string;
     }): import("./receipt.js").Receipt;
+    /** Add the log's entries that history has not seen yet. @private */
+    private _syncHistory;
 }
 /**
  * Wrap every tool in a map of tools, for frameworks that describe a tool as an
