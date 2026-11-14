@@ -28,14 +28,28 @@
     "tamper-evident"
   ],
   "main": "./src/proxy.js",
+  "types": "./types/proxy.d.ts",
   "exports": {
-    ".": "./src/proxy.js",
-    "./jsonrpc": "./src/jsonrpc.js",
-    "./approve": "./src/approve.js",
-    "./remote": "./src/remote.js"
+    ".": {
+      "types": "./types/proxy.d.ts",
+      "default": "./src/proxy.js"
+    },
+    "./jsonrpc": {
+      "types": "./types/jsonrpc.d.ts",
+      "default": "./src/jsonrpc.js"
+    },
+    "./approve": {
+      "types": "./types/approve.d.ts",
+      "default": "./src/approve.js"
+    },
+    "./remote": {
+      "types": "./types/remote.d.ts",
+      "default": "./src/remote.js"
+    }
   },
   "files": [
-    "src"
+    "src",
+    "types"
   ],
   "scripts": {
     "test": "node --no-warnings=ExperimentalWarning --test"

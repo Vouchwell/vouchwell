@@ -499,6 +499,7 @@ export class McpProxy extends EventEmitter {
    *
    * @param {import('@vouchwell/core').PolicyDecision} decision
    * @param {string} target
+   * @returns {import('@vouchwell/core').PolicyDecision & { enforced: false, wouldBe?: 'deny' | 'escalate' }}
    */
   _monitor(decision, target) {
     if (decision.outcome === 'allow') return { ...decision, enforced: false };

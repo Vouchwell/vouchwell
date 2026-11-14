@@ -13,3 +13,7 @@
 *.png binary
 *.ico binary
 *.db binary
+
+# Generated from the JSDoc by scripts/types.mjs: collapsed in GitHub diffs and
+# left out of the language stats. CI checks they match the source.
+packages/*/types/** linguist-generated=true
