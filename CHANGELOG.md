@@ -5,9 +5,16 @@ up to 0.5.0 `proofwire` and `@proof_wire/*` — release together at the same ver
 
 ## Unreleased
 
-Fixes from a full review of the codebase. The first four could leave a log
-reporting tampering that never happened, leak a signing key into git, or let
-a call through a policy that should have stopped it.
+## 0.8.2 — 2026-11-14
+
+Fifteen fixes from a full review of the codebase, and TypeScript types:
+
+- **Logs stay intact with more than one writer:** two proxies, or a proxy and
+  a coding agent's hooks, on one log no longer break its chain.
+- **Policy gaps closed:** batched tool calls, unreadable amounts, `per`
+  limits, combined egress templates and approvals that outlived a budget.
+- **`vw init --log` keeps the signing key out of git.**
+- **TypeScript declarations** for every library package.
 
 ### Fixed
 
@@ -57,6 +64,11 @@ a call through a policy that should have stopped it.
 - **A receipt with a non-string `prev` crashed hub ingest** with a 500; it is a
   422.
 
+- **`RecorderOptions.policy` accepts a `Policy`.** Its JSDoc described a
+  `decide` that takes any object, which TypeScript would not match against
+  `Policy.decide`, so the README's own `new Recorder({ policy })` would not
+  have type-checked.
+
 ### Changed
 
 - **`vw shred` says what it cannot erase.** A receipt's redacted preview is
@@ -79,13 +91,6 @@ a call through a policy that should have stopped it.
 - **The public types are exported from `@vouchwell/core`:** `Receipt`,
   `Actor`, `Decision`, `Checkpoint`, `RecorderOptions`, `PolicyDecision` and
   the others a caller handles.
-
-### Fixed
-
-- **`RecorderOptions.policy` accepts a `Policy`.** Its JSDoc described a
-  `decide` that takes any object, which TypeScript would not match against
-  `Policy.decide`, so the README's own `new Recorder({ policy })` would not
-  have type-checked.
 
 ## 0.8.1 — 2026-11-13
 
