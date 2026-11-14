@@ -105,7 +105,10 @@ function emit(tool, pkg, outDir) {
   if (!res.ok) throw new Error(`tsc failed for packages/${pkg}:\n${res.output}`);
   for (const file of listFiles(outDir)) {
     const full = path.join(outDir, file);
-    fs.writeFileSync(full, HEADER + fs.readFileSync(full, 'utf8'));
+    // tsc carries a bin's `#!` line into its declaration, where it means
+    // nothing, and below the header it would be a syntax error.
+    const body = fs.readFileSync(full, 'utf8').replace(/^#![^\n]*\n/, '');
+    fs.writeFileSync(full, HEADER + body);
   }
 }
 
@@ -174,12 +177,17 @@ function main() {
 
   // A consumer, resolving the packages through their package.json the way an
   // npm install would. Its @ts-expect-error lines fail if a type is `any`.
-  const consumer = tsc(tool, { noEmit: true }, [path.join(ROOT, 'scripts', 'types-consumer.ts')]);
+  // Every declaration file is checked with it, skipLibCheck off, so one no
+  // entry point imports (a bin's) cannot ship broken unnoticed.
+  const consumer = tsc(tool, { noEmit: true, skipLibCheck: false }, [
+    path.join(ROOT, 'scripts', 'types-consumer.ts'),
+    ...PACKAGES.map((pkg) => path.join(ROOT, 'packages', pkg, 'types', '**', '*.d.ts')),
+  ]);
   if (!consumer.ok) {
-    console.error(`✗ scripts/types-consumer.ts does not type-check against the published declarations:\n${consumer.output}`);
+    console.error(`✗ the declarations, or scripts/types-consumer.ts against them, do not type-check:\n${consumer.output}`);
     return 1;
   }
-  console.log('✓ a TypeScript consumer type-checks against them');
+  console.log('✓ every declaration type-checks, and so does a consumer of them');
   return 0;
 }
 
