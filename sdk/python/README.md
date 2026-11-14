@@ -1,5 +1,10 @@
 # vouchwell (Python)
 
+[![PyPI](https://img.shields.io/pypi/v/vouchwell)](https://pypi.org/project/vouchwell/)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://pypi.org/project/vouchwell/)
+[![CI](https://github.com/Vouchwell/vouchwell/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Vouchwell/vouchwell/actions/workflows/ci.yml?query=branch%3Amain)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/Vouchwell/vouchwell/blob/main/LICENSE)
+
 Tamper-evident receipts for what your AI agents do, from Python. This is the
 Python SDK for [Vouchwell](https://github.com/vouchwell/vouchwell), and it
 writes exactly the format the `vouchwell` CLI reads:

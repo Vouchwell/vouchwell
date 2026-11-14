@@ -3,9 +3,10 @@
 A transparent MCP proxy that enforces policy and writes tamper-evident
 receipts, plus the client that ships them to a Vouchwell hub.
 
-[![CI](https://github.com/vouchwell/vouchwell/actions/workflows/ci.yml/badge.svg)](https://github.com/vouchwell/vouchwell/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](#)
+[![CI](https://github.com/Vouchwell/vouchwell/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Vouchwell/vouchwell/actions/workflows/ci.yml?query=branch%3Amain)
+[![npm](https://img.shields.io/npm/v/@vouchwell/proxy)](https://www.npmjs.com/package/@vouchwell/proxy)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/Vouchwell/vouchwell/blob/main/packages/proxy/LICENSE)
+[![Dependencies](https://img.shields.io/badge/dependencies-0%20external-brightgreen)](https://github.com/Vouchwell/vouchwell/blob/main/packages/proxy/package.json)
 
 Most people want the [`vouchwell`](https://npmjs.com/package/vouchwell) CLI
 instead — this is the library underneath it.

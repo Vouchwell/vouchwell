@@ -2,9 +2,10 @@
 
 **Guardrails and tamper-evident receipts for AI agents.**
 
-[![CI](https://github.com/vouchwell/vouchwell/actions/workflows/ci.yml/badge.svg)](https://github.com/vouchwell/vouchwell/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](#)
+[![CI](https://github.com/Vouchwell/vouchwell/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Vouchwell/vouchwell/actions/workflows/ci.yml?query=branch%3Amain)
+[![npm](https://img.shields.io/npm/v/vouchwell)](https://www.npmjs.com/package/vouchwell)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/Vouchwell/vouchwell/blob/main/packages/cli/LICENSE)
+[![Dependencies](https://img.shields.io/badge/dependencies-0%20external-brightgreen)](https://github.com/Vouchwell/vouchwell/blob/main/packages/cli/package.json)
 
 Your agents run shell commands, spend money, send mail, and touch customer
 data. When something goes wrong, "our logs say it didn't" is not an answer —
