@@ -1,0 +1,10 @@
+# Blank issues stay on: questions don't fit either template, and the website's
+# "Get notified" buttons open prefilled blank issues labelled `waitlist`.
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Vouchwell/vouchwell/security/advisories/new
+    about: Please report security problems privately, not as public issues.
+  - name: Documentation
+    url: https://github.com/Vouchwell/vouchwell#readme
+    about: Install, policies, commands, and guides for the hub, coding agents and the Python SDK.

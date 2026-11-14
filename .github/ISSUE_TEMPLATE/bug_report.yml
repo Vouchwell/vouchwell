@@ -1,0 +1,73 @@
+name: Bug report
+description: Something doesn't work the way the docs say it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Found a security problem? Please don't file it here. Report it privately instead:
+        https://github.com/Vouchwell/vouchwell/security/advisories/new
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - CLI (vw) or MCP proxy
+        - Coding-agent hook or Claude Code plugin
+        - Hub (@vouchwell/server) or Docker image
+        - Library (@vouchwell/core)
+        - Python SDK
+        - Website or in-browser verifier
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The command you ran and what it printed. Exact output beats a summary.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The smallest set of steps that shows it. A policy file or a failing test helps a lot.
+      placeholder: |
+        1. vw init
+        2. vw proxy -- npx -y @modelcontextprotocol/server-everything
+        3. ...
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `vw --version`, or the package and version (e.g. `@vouchwell/core 0.8.1`, `vouchwell 0.8.1` on PyPI).
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node or Python version, and the agent or MCP client if it matters.
+      placeholder: macOS 15, Node 22.14, Claude Code 2.1
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Set `VOUCHWELL_DEBUG=1` to get a stack trace. Never paste `key.pem`, `salts.jsonl` or a hub token.
+        A bundle from `vw export` holds no payloads or salts, only redacted previews, so it's usually safe to attach. Read it first.
+      render: text

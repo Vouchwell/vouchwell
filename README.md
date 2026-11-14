@@ -586,6 +586,12 @@ not broken.
 [the hub](docs/HUB.md) ·
 [threat model](docs/THREAT-MODEL.md)
 
+## Contributing
+
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers
+setup, tests and the ground rules. Report security problems privately, as
+described in [SECURITY.md](SECURITY.md).
+
 ## License
 
 Apache-2.0. The format, the verifier, and the CLI are open and will stay open:

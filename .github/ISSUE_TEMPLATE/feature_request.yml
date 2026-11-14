@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest a change, a new policy template, or an integration.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The problem or the use case. What you're running, and where Vouchwell gets in the way or falls short.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help
+      description: How you'd like it to work. A command, a config snippet or a policy rule is fine.
+
+  - type: textarea
+    id: today
+    attributes:
+      label: What you do today
+      description: Any workaround you're using, or other tools you've tried.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - CLI (vw) or MCP proxy
+        - Coding-agent hook or Claude Code plugin
+        - Policy engine or templates
+        - Hub (@vouchwell/server)
+        - Python SDK
+        - Website or docs
+        - Not sure
