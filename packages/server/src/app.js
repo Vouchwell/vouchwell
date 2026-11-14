@@ -51,6 +51,7 @@ import { discover, fetchJson, verifyIdToken, pkce } from './oidc.js';
  */
 
 /** This package's version, as published — read, not typed, so it cannot drift. */
+/** @type {string} */
 export const VERSION = createRequire(import.meta.url)('../package.json').version;
 
 /** Shown with a generated webhook secret, when the page renders instead of redirecting. */

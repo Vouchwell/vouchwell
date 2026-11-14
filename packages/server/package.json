@@ -29,16 +29,27 @@
     "self-hosted"
   ],
   "main": "./src/app.js",
+  "types": "./types/app.d.ts",
   "exports": {
-    ".": "./src/app.js",
-    "./store": "./src/store.js",
-    "./auth": "./src/auth.js"
+    ".": {
+      "types": "./types/app.d.ts",
+      "default": "./src/app.js"
+    },
+    "./store": {
+      "types": "./types/store.d.ts",
+      "default": "./src/store.js"
+    },
+    "./auth": {
+      "types": "./types/auth.d.ts",
+      "default": "./src/auth.js"
+    }
   },
   "bin": {
     "vouchwell-hub": "./src/bin.js"
   },
   "files": [
-    "src"
+    "src",
+    "types"
   ],
   "scripts": {
     "test": "node --no-warnings=ExperimentalWarning --test"

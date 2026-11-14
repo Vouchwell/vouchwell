@@ -66,7 +66,7 @@ export class PolicyDenied extends Error {
  * @property {string} principal   On whose behalf.
  * @property {string} [session]   Defaults to a fresh id per recorder.
  * @property {string} [namespace] Prefix for tool names in receipts, e.g. `stripe`.
- * @property {{ decide: (ctx: object, history?: History) => any }} [policy]
+ * @property {Pick<import('./policy.js').Policy, 'decide'>} [policy]
  *   A `Policy`, or anything with the same `decide`. Omit to record only.
  * @property {(req: { target: string, params: unknown, reason: string, rules: string[], actor: object }) =>
  *   Promise<{ approved: boolean, by: string, note?: string }>} [approver]

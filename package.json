@@ -17,6 +17,7 @@
   ],
   "scripts": {
     "test": "node --no-warnings=ExperimentalWarning --test",
+    "types": "node scripts/types.mjs",
     "demo": "node examples/demo.js",
     "vw": "node packages/cli/src/bin.js",
     "evidence": "node packages/cli/src/bin.js hook evidence evidence --config .claude/vouchwell.config.json",

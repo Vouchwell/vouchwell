@@ -67,3 +67,27 @@ export { Recorder, PolicyDenied, NO_POLICY, recordTools } from './recorder.js';
 export { POLICY_TEMPLATES, policyTemplate, composePolicy } from './templates.js';
 export { witnessCheckpoint, WitnessRefusal } from './witness-client.js';
 export { adoptLegacyEnv } from './legacy.js';
+
+// The types a caller handles, for TypeScript and editors. JSDoc only: none of
+// these exist at runtime.
+/**
+ * @typedef {import('./receipt.js').Receipt} Receipt
+ * @typedef {import('./receipt.js').ReceiptBody} ReceiptBody
+ * @typedef {import('./receipt.js').Actor} Actor
+ * @typedef {import('./receipt.js').Decision} Decision
+ * @typedef {import('./receipt.js').Sealed} Sealed
+ * @typedef {import('./receipt.js').Keyring} Keyring
+ * @typedef {import('./receipt.js').VerifyIssue} VerifyIssue
+ * @typedef {import('./checkpoint.js').Checkpoint} Checkpoint
+ * @typedef {import('./checkpoint.js').CheckpointBody} CheckpointBody
+ * @typedef {import('./checkpoint.js').Signature} Signature
+ * @typedef {import('./keys.js').Identity} Identity
+ * @typedef {import('./policy.js').Outcome} Outcome
+ * @typedef {import('./policy.js').PolicyDecision} PolicyDecision
+ * @typedef {import('./recorder.js').RecorderOptions} RecorderOptions
+ * @typedef {import('./redact.js').Detector} Detector
+ * @typedef {import('./redact.js').RedactionResult} RedactionResult
+ * @typedef {import('./redact.js').RedactionFinding} RedactionFinding
+ * @typedef {import('./templates.js').PolicyTemplate} PolicyTemplate
+ * @typedef {import('./unfinished.js').UnfinishedAction} UnfinishedAction
+ */

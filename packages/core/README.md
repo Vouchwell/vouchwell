@@ -12,6 +12,8 @@ Signed, hash-chained, Merkle-anchored receipts for AI agent actions.
 npm install @vouchwell/core
 ```
 
+TypeScript declarations are included, generated from the JSDoc in the source.
+
 ```js
 import fs from 'node:fs';
 import { ProofLog, Policy, Recorder, PolicyDenied } from '@vouchwell/core';

@@ -30,11 +30,16 @@
     "zero-dependency"
   ],
   "main": "./src/index.js",
+  "types": "./types/index.d.ts",
   "exports": {
-    ".": "./src/index.js"
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./src/index.js"
+    }
   },
   "files": [
-    "src"
+    "src",
+    "types"
   ],
   "scripts": {
     "test": "node --no-warnings=ExperimentalWarning --test"

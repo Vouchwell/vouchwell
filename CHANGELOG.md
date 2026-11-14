@@ -5,6 +5,27 @@ up to 0.5.0 `proofwire` and `@proof_wire/*` — release together at the same ver
 
 ## Unreleased
 
+### Added
+
+- **TypeScript declarations** for `@vouchwell/core`, `@vouchwell/proxy`,
+  `@vouchwell/dashboard` and `@vouchwell/server`, every entry point included.
+  They are generated from the JSDoc already in the source, committed under
+  each package's `types/`, and wired into `exports`, so nothing changes for
+  JavaScript users and there is still no build step and no dependency.
+  `npm run types` regenerates them with a pinned TypeScript; CI fails when
+  they are out of date and type-checks a consumer against them. Checked with
+  TypeScript 5.9, 6.0 and 7.0, with `nodenext` and `bundler` resolution.
+- **The public types are exported from `@vouchwell/core`:** `Receipt`,
+  `Actor`, `Decision`, `Checkpoint`, `RecorderOptions`, `PolicyDecision` and
+  the others a caller handles.
+
+### Fixed
+
+- **`RecorderOptions.policy` accepts a `Policy`.** Its JSDoc described a
+  `decide` that takes any object, which TypeScript would not match against
+  `Policy.decide`, so the README's own `new Recorder({ policy })` would not
+  have type-checked.
+
 ## 0.8.1 — 2026-11-13
 
 Seeing Vouchwell work no longer needs a clone, and `vw dash` works for

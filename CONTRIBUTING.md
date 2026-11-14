@@ -39,6 +39,7 @@ npm run demo                                   # end-to-end demo; exits 1 if any
 npm run vw -- init                             # run the CLI from source
 npm test -w @vouchwell/core                    # one package's tests
 node --test packages/core/test/merkle.test.js  # one test file
+npm run types                                  # regenerate the TypeScript declarations
 npm run hub -- serve                           # a local hub on :8787
 ```
 
@@ -102,6 +103,11 @@ These are what reviewers look for first.
 - **Tests come with the change.** A bug fix includes a test that fails
   without it. CI runs the suite on Linux, macOS and Windows with Node 22 and
   24, the core on Node 20.11, and the Python SDK on 3.9 and 3.13.
+- **Types come from the JSDoc.** The TypeScript declarations in
+  `packages/*/types/` are generated from it and committed. If you change an
+  exported function, class or its JSDoc, run `npm run types` and commit the
+  result. CI fails when they're out of date, and type-checks
+  `scripts/types-consumer.ts` against them.
 - **Style:** plain ES modules, no build step, types in JSDoc comments,
   two-space indent, single quotes, semicolons. There's no linter, so match
   the file you're editing. Comments should explain why, not restate the code.

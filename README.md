@@ -422,7 +422,8 @@ mid-call); `--fail-on-unfinished` makes those exit 3.
 
 ## Library use
 
-Not on MCP? Wrap the tools themselves. The core is a small, dependency-free ES module.
+Not on MCP? Wrap the tools themselves. The core is a small, dependency-free ES module,
+with TypeScript declarations included.
 
 ```js
 import fs from 'node:fs';

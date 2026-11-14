@@ -23,12 +23,17 @@
     "dashboard"
   ],
   "main": "./src/server.js",
+  "types": "./types/server.d.ts",
   "exports": {
-    ".": "./src/server.js"
+    ".": {
+      "types": "./types/server.d.ts",
+      "default": "./src/server.js"
+    }
   },
   "files": [
     "src",
-    "public"
+    "public",
+    "types"
   ],
   "scripts": {
     "test": "node --no-warnings=ExperimentalWarning --test"
