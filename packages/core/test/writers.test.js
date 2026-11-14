@@ -4,10 +4,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { ProofLog, Policy, Recorder, PolicyDenied } from '../src/index.js';
 
-const INDEX = fileURLToPath(new URL('../src/index.js', import.meta.url));
+// A URL, not a path: the child imports it, and on Windows an absolute path
+// (D:\\…) is not a module specifier.
+const INDEX = new URL('../src/index.js', import.meta.url).href;
 const actor = { agent: 'a', session: 's', principal: 'p' };
 const allow = { outcome: 'allow', policy: 'none', rules: [] };
 
