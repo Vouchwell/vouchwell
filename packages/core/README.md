@@ -3,9 +3,10 @@
 Signed, hash-chained, Merkle-anchored receipts for AI agent actions.
 **Zero dependencies** — Node's standard library only.
 
-[![CI](https://github.com/vouchwell/vouchwell/actions/workflows/ci.yml/badge.svg)](https://github.com/vouchwell/vouchwell/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](#)
+[![CI](https://github.com/Vouchwell/vouchwell/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Vouchwell/vouchwell/actions/workflows/ci.yml?query=branch%3Amain)
+[![npm](https://img.shields.io/npm/v/@vouchwell/core)](https://www.npmjs.com/package/@vouchwell/core)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/Vouchwell/vouchwell/blob/main/packages/core/LICENSE)
+[![Dependencies](https://img.shields.io/badge/dependencies-0%20external-brightgreen)](https://github.com/Vouchwell/vouchwell/blob/main/packages/core/package.json)
 
 ```bash
 npm install @vouchwell/core

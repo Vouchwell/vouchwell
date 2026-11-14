@@ -1,5 +1,10 @@
 # Vouchwell
 
+[![CI](https://github.com/Vouchwell/vouchwell/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Vouchwell/vouchwell/actions/workflows/ci.yml?query=branch%3Amain)
+[![npm](https://img.shields.io/npm/v/vouchwell)](https://www.npmjs.com/package/vouchwell)
+[![PyPI](https://img.shields.io/pypi/v/vouchwell)](https://pypi.org/project/vouchwell/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Dependencies](https://img.shields.io/badge/dependencies-0%20external-brightgreen)](#status)
 [![Audited by AddonAudit](https://addonaudit.com/badges/audited.svg)](https://addonaudit.com/addon/io-github-vouchwell-vouchwell/)
 
 **Tamper-evident receipts for AI agent actions.**
