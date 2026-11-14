@@ -64,11 +64,20 @@ export declare function plain(s: unknown): string;
  * @param {object} [opts]
  * @param {number} [opts.timeoutMs=120000]
  * @param {string} [opts.by='tty']
+ * @param {() => { input: NodeJS.ReadableStream & { destroy(): void }, output: NodeJS.WritableStream }} [opts.open]
+ *   Where to ask: the controlling terminal unless given, for tests and for
+ *   embedders with a terminal of their own.
  * @returns {(req: ApprovalRequest) => Promise<ApprovalOutcome>}
  */
 export declare function ttyApprover(opts?: {
     timeoutMs?: number;
     by?: string;
+    open?: () => {
+        input: NodeJS.ReadableStream & {
+            destroy(): void;
+        };
+        output: NodeJS.WritableStream;
+    };
 }): (req: ApprovalRequest) => Promise<ApprovalOutcome>;
 /**
  * Ask a service — Slack, PagerDuty, an internal approvals app.

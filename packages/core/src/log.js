@@ -15,6 +15,7 @@ import {
   GENESIS_PREV,
 } from './receipt.js';
 import { buildCheckpoint, signCheckpoint, verifyCheckpoint } from './checkpoint.js';
+import { withLock } from './lock.js';
 
 /** Bundle kinds this verifier accepts: the current one, and the one written before the rename. */
 const BUNDLE_KINDS = new Set(['vouchwell.bundle', 'proofwire.bundle']);
@@ -75,6 +76,8 @@ export class ProofLog {
     this.tree = state.tree;
     /** @type {string} */
     this.head = state.head;
+    /** Bytes of entries.jsonl this instance has read, so `refresh` reads only what is new. */
+    this._bytes = state.bytes ?? 0;
   }
 
   /**
@@ -148,19 +151,81 @@ export class ProofLog {
     const tree = new MerkleTree();
     let head = GENESIS_PREV;
 
-    for (const [i, line] of readLines(path.join(dir, FILES.entries)).entries()) {
+    const log = new ProofLog(dir, { config, identity, keyring, entries, tree, head, bytes: 0 });
+    // Strict on open: a last line with no newline is read too, and one that
+    // is not JSON is an error, so nothing in the file escapes verification.
+    log.refresh({ strict: true });
+    return log;
+  }
+
+  /**
+   * Read whatever other writers have appended since this instance last looked.
+   *
+   * More than one process can write a log: two `vw proxy` processes wrapping
+   * two MCP servers in one project, or a proxy beside a coding agent's hooks.
+   * Every write takes the log's lock and calls this first, so a receipt's
+   * `seq` and `prev` always continue the log as it is on disk, not as it was
+   * when this process opened it.
+   *
+   * @param {{ strict?: boolean }} [opts]  strict: also read a final line with
+   *   no newline, as `open` does. Otherwise that line is assumed to be another
+   *   writer's, still being written, and left for the next call.
+   * @returns {import('./receipt.js').Receipt[]}  The entries that were new.
+   */
+  refresh(opts = {}) {
+    const file = path.join(this.dir, FILES.entries);
+    // Open, then size the file that is open. Sizing the path and then opening
+    // it reads one file's length from what may by then be another (replaced
+    // by a rename, say).
+    let fd;
+    try {
+      fd = fs.openSync(file, 'r');
+    } catch (err) {
+      if (/** @type {NodeJS.ErrnoException} */ (err).code === 'ENOENT') return [];
+      throw err;
+    }
+    let buf;
+    try {
+      const size = fs.fstatSync(fd).size;
+      if (size === this._bytes) return [];
+      if (size < this._bytes) {
+        throw new Error(
+          `entries.jsonl in ${this.dir} is ${size} bytes, shorter than the ${this._bytes} already read: ` +
+            'it was truncated or rewritten',
+        );
+      }
+      buf = Buffer.alloc(size - this._bytes);
+      // A short read (the file shrank after fstat) leaves zeros at the end;
+      // keep only what was read.
+      buf = buf.subarray(0, fs.readSync(fd, buf, 0, buf.length, this._bytes));
+    } finally {
+      fs.closeSync(fd);
+    }
+    // Whole lines only, unless strict: a fragment after the last newline is
+    // normally a line another writer has not finished writing.
+    let end = buf.lastIndexOf(0x0a) + 1;
+    if (opts.strict && buf.subarray(end).toString('utf8').trim() !== '') end = buf.length;
+    if (end === 0) return [];
+
+    /** @type {import('./receipt.js').Receipt[]} */
+    const added = [];
+    let lineNo = this.entries.length;
+    for (const line of buf.subarray(0, end).toString('utf8').split('\n')) {
+      if (line.trim() === '') continue;
+      lineNo++;
       let receipt;
       try {
         receipt = JSON.parse(line);
       } catch (err) {
-        throw new Error(`entries.jsonl line ${i + 1} is not valid JSON: ${err.message}`);
+        throw new Error(`entries.jsonl line ${lineNo} is not valid JSON: ${/** @type {Error} */ (err).message}`);
       }
-      entries.push(receipt);
-      tree.append(leafHash(canonicalBytes(receipt)));
-      head = entryHash(receipt);
+      this.entries.push(receipt);
+      this.tree.append(leafHash(canonicalBytes(receipt)));
+      this.head = entryHash(receipt);
+      added.push(receipt);
     }
-
-    return new ProofLog(dir, { config, identity, keyring, entries, tree, head });
+    this._bytes += end;
+    return added;
   }
 
   /** @returns {number} */
@@ -195,6 +260,14 @@ export class ProofLog {
     if (!this.identity.privateKeyObject) {
       throw new Error('log is open read-only; cannot append');
     }
+    return withLock(this.dir, () => {
+      this.refresh();
+      return this._append(args);
+    });
+  }
+
+  /** @param {Parameters<ProofLog['append']>[0]} args @private */
+  _append(args) {
     const { body, salts } = buildReceipt({
       log: this.config.log,
       seq: this.entries.length,
@@ -205,7 +278,9 @@ export class ProofLog {
 
     // Durable before in-memory: if the process dies mid-append we would rather
     // have an entry on disk that memory never saw than the reverse.
-    fs.appendFileSync(path.join(this.dir, FILES.entries), canonicalize(receipt) + '\n');
+    const line = canonicalize(receipt) + '\n';
+    fs.appendFileSync(path.join(this.dir, FILES.entries), line);
+    this._bytes += Buffer.byteLength(line);
     // Salts go to their own file so it can be destroyed independently. They
     // are written second: a receipt without its salt is merely unopenable, a
     // salt without its receipt is a dangling secret.
@@ -227,15 +302,19 @@ export class ProofLog {
    * @returns {import('./checkpoint.js').Checkpoint}
    */
   checkpoint() {
-    const body = buildCheckpoint({
-      log: this.config.log,
-      size: this.size,
-      root: this.root,
-      head: this.head,
+    return withLock(this.dir, () => {
+      // Signed over the log as it is on disk, other writers' entries included.
+      this.refresh();
+      const body = buildCheckpoint({
+        log: this.config.log,
+        size: this.size,
+        root: this.root,
+        head: this.head,
+      });
+      const cp = signCheckpoint(this.identity, body, 'log');
+      fs.appendFileSync(path.join(this.dir, FILES.checkpoints), canonicalize(cp) + '\n');
+      return cp;
     });
-    const cp = signCheckpoint(this.identity, body, 'log');
-    fs.appendFileSync(path.join(this.dir, FILES.checkpoints), canonicalize(cp) + '\n');
-    return cp;
   }
 
   /** @returns {import('./checkpoint.js').Checkpoint[]} */
@@ -257,6 +336,11 @@ export class ProofLog {
    * @returns {import('./checkpoint.js').Checkpoint}
    */
   addSignature(size, signature) {
+    return withLock(this.dir, () => this._addSignature(size, signature));
+  }
+
+  /** @param {number} size @param {import('./checkpoint.js').Signature} signature @private */
+  _addSignature(size, signature) {
     const file = path.join(this.dir, FILES.checkpoints);
     const all = this.checkpoints();
     const target = all.find((cp) => cp.body.size === size);
@@ -320,12 +404,17 @@ export class ProofLog {
    * @returns {number} How many entries were shredded.
    */
   shred(predicate) {
-    const doomed = new Set(this.entries.filter(predicate).map((r) => r.seq));
-    if (doomed.size === 0) return 0;
-    const file = path.join(this.dir, FILES.salts);
-    const kept = readLines(file).filter((l) => !doomed.has(JSON.parse(l).seq));
-    fs.writeFileSync(file, kept.length ? kept.join('\n') + '\n' : '', { mode: 0o600 });
-    return doomed.size;
+    return withLock(this.dir, () => {
+      // Other writers' entries are in scope too: an erasure request covers the
+      // whole log, not the part this process happened to have read.
+      this.refresh();
+      const doomed = new Set(this.entries.filter(predicate).map((r) => r.seq));
+      if (doomed.size === 0) return 0;
+      const file = path.join(this.dir, FILES.salts);
+      const kept = readLines(file).filter((l) => !doomed.has(JSON.parse(l).seq));
+      fs.writeFileSync(file, kept.length ? kept.join('\n') + '\n' : '', { mode: 0o600 });
+      return doomed.size;
+    });
   }
 
   /**
@@ -335,11 +424,14 @@ export class ProofLog {
    * @param {string} publicKey  base64url
    */
   trustKey(kid, publicKey) {
-    this.keyring = { ...this.keyring, [kid]: publicKey };
-    fs.writeFileSync(
-      path.join(this.dir, FILES.keyring),
-      JSON.stringify(this.keyring, null, 2) + '\n',
-    );
+    withLock(this.dir, () => {
+      // Merged into the file as it is now, so a key another process added
+      // since this one opened the log is kept.
+      const file = path.join(this.dir, FILES.keyring);
+      const onDisk = JSON.parse(fs.readFileSync(file, 'utf8'));
+      this.keyring = { ...onDisk, ...this.keyring, [kid]: publicKey };
+      fs.writeFileSync(file, JSON.stringify(this.keyring, null, 2) + '\n');
+    });
   }
 
   /**
@@ -366,7 +458,8 @@ export class ProofLog {
    * Full local audit: signatures, chain links, tree consistency, and every
    * historical checkpoint replayed against the log as it stands now.
    *
-   * @returns {{ ok: boolean, size: number, root: string, issues: import('./receipt.js').VerifyIssue[] }}
+   * @returns {{ ok: boolean, size: number, root: string, issues: import('./receipt.js').VerifyIssue[], warnings: import('./receipt.js').VerifyIssue[] }}
+   *   `warnings` are clock regressions: reported, not failures.
    */
   audit() {
     const chain = verifyChain(this.entries, this.keyring);
@@ -422,7 +515,7 @@ export class ProofLog {
       }
     }
 
-    return { ok: issues.length === 0, size: this.size, root: this.root, issues };
+    return { ok: issues.length === 0, size: this.size, root: this.root, issues, warnings: chain.warnings };
   }
 
   /**
@@ -503,12 +596,14 @@ export function consistencyFor(tree, checkpoints) {
 function verifyBundleUnchecked(bundle, opts = {}) {
   /** @type {string[]} */
   const issues = [];
+  /** Worth reporting, but not failures: a clock that stepped backwards. @type {string[]} */
+  const warnings = [];
 
   // `proofwire.bundle` is what the project wrote before it was renamed
   // Vouchwell (0.5.0 and earlier). The kind is a label, not signed; the
   // receipts and checkpoints inside verify exactly as they always did.
   if (!BUNDLE_KINDS.has(bundle?.kind) || bundle.v !== 1) {
-    return { ok: false, issues: ['not a Vouchwell v1 bundle'], checked: 0 };
+    return { ok: false, issues: ['not a Vouchwell v1 bundle'], warnings: [], checked: 0 };
   }
   const keyring = bundle.keyring ?? {};
 
@@ -523,7 +618,7 @@ function verifyBundleUnchecked(bundle, opts = {}) {
       ? new Set(Object.values(opts.trustedLogKeys).filter((k) => typeof k === 'string' && k))
       : new Set();
     if (pinned.size === 0) {
-      return { ok: false, issues: ['trustedLogKeys was given but names no key'], checked: 0 };
+      return { ok: false, issues: ['trustedLogKeys was given but names no key'], warnings: [], checked: 0 };
     }
     /** @type {Set<string>} */
     const signers = new Set();
@@ -548,7 +643,7 @@ function verifyBundleUnchecked(bundle, opts = {}) {
   try {
     root = unhex(bundle.root);
   } catch {
-    return { ok: false, issues: ['bundle root is not valid hex'], checked: 0 };
+    return { ok: false, issues: ['bundle root is not valid hex'], warnings: [], checked: 0 };
   }
 
   if (opts.expectRoot && opts.expectRoot !== bundle.root) {
@@ -569,6 +664,7 @@ function verifyBundleUnchecked(bundle, opts = {}) {
     return {
       ok: false,
       issues: [`minWitnesses must be a non-negative integer, got ${String(opts.minWitnesses)}`],
+      warnings: [],
       checked: 0,
     };
   }
@@ -731,6 +827,7 @@ function verifyBundleUnchecked(bundle, opts = {}) {
     if (!bundle.partial) {
       const chain = verifyChain(receipts, keyring);
       for (const i of chain.issues) issues.push(`entry ${i.seq}: ${i.message}`);
+      for (const w of chain.warnings) warnings.push(`entry ${w.seq}: ${w.message}`);
     } else {
       for (const receipt of receipts) {
         for (const i of verifyReceipt(receipt, keyring)) {
@@ -748,6 +845,7 @@ function verifyBundleUnchecked(bundle, opts = {}) {
   return {
     ok: issues.length === 0,
     issues,
+    warnings,
     checked,
     // How many leading entries a checkpoint meeting the witness requirement
     // covers. Entries at or past this are signed by the log alone.
@@ -837,7 +935,8 @@ function anchorCheckpoints({ bundle, root, treeSize, prefixRoots, checkpointResu
  * @param {Record<string, string>} [opts.trustedLogKeys]  kid → public key
  *   (base64url) of the log's own signing key(s). When given, everything the
  *   log signed must be signed by one of them.
- * @returns {{ ok: boolean, issues: string[], checked: number }}
+ * @returns {{ ok: boolean, issues: string[], warnings: string[], checked: number }}
+ *   `warnings` (a clock that stepped backwards) do not make `ok` false.
  */
 export function verifyBundle(bundle, opts = {}) {
   try {
@@ -846,6 +945,7 @@ export function verifyBundle(bundle, opts = {}) {
     return {
       ok: false,
       issues: [`could not verify this bundle: ${/** @type {Error} */ (err).message}`],
+      warnings: [],
       checked: 0,
     };
   }

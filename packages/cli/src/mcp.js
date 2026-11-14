@@ -153,6 +153,8 @@ export function callTool(name, input = {}, ctx) {
       root: res.root,
       checkpoints: log.checkpoints().length,
       issues: res.issues.map((/** @type {any} */ i) => ({ kind: i.kind, ...(i.seq !== undefined ? { seq: i.seq } : {}), message: i.message })),
+      // A clock that stepped backwards: reported, not a failure.
+      warnings: (res.warnings ?? []).map((/** @type {any} */ w) => ({ seq: w.seq, message: w.message })),
       unfinished: found.unfinished.length + found.abandoned.length,
       ...(res.ok ? {} : { note: 'The log was altered after it was written. Treat this as evidence of tampering, not a corrupted file to repair.' }),
     };
@@ -211,6 +213,7 @@ export function callTool(name, input = {}, ctx) {
       partial: bundle?.partial === true,
       signer_pinned: Boolean(trustedLogKeys),
       issues: res.issues,
+      warnings: res.warnings ?? [],
       ...(res.ok && !trustedLogKeys ? { note: 'Intact, but nothing outside the bundle says whose key signed it. Pin the owner\'s published key with log_keys.' } : {}),
       ...(res.ok && bundle?.partial ? { note_partial: 'A filtered export: each entry is genuine, but it cannot prove nothing was left out.' } : {}),
     };

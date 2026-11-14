@@ -1,6 +1,6 @@
 {
   "name": "@vouchwell/core",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "type": "module",
   "description": "Signed, hash-chained, Merkle-anchored receipts for AI agent actions.",
   "license": "Apache-2.0",

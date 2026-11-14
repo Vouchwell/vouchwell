@@ -32,6 +32,21 @@ export declare function clientIdentity(info: unknown): {
  */
 export declare function extractMetrics(config: Record<string, any>, target: string, params: unknown): Record<string, number>;
 /**
+ * `extractMetrics`, plus the names of metrics whose source value was there
+ * but was not a number. Those used to be dropped, and a budget with no amount
+ * to count let the call through: a refund sent as "9,000" or "9000abc" never
+ * reached a $100 cap. The policy now refuses a budgeted call it cannot count.
+ *
+ * @param {Record<string, any>} config
+ * @param {string} target
+ * @param {unknown} params
+ * @returns {{ metrics: Record<string, number>, unreadable: string[] }}
+ */
+export declare function extractMetricsChecked(config: Record<string, any>, target: string, params: unknown): {
+    metrics: Record<string, number>;
+    unreadable: string[];
+};
+/**
  * Cross-check a policy's budgets against the metrics this runtime can actually
  * produce.
  *
@@ -144,6 +159,16 @@ export type ProxyOptions = {
      * done, but forward every call. See `_monitor`.
      */
     monitor?: boolean;
+    /**
+     * Which redacted
+     * previews receipts carry; both unless set. A preview is signed, so `vw shred`
+     * cannot remove it later: logs that will see personal data the redactor does
+     * not recognise (names, addresses) should record commitments only.
+     */
+    previews?: {
+        params?: boolean;
+        result?: boolean;
+    };
 };
 /**
  * @typedef {object} ProxyOptions
@@ -165,6 +190,10 @@ export type ProxyOptions = {
  * @property {Record<string,string>} [env]
  * @property {boolean} [monitor]  Evaluate policy and record what it would have
  *   done, but forward every call. See `_monitor`.
+ * @property {{ params?: boolean, result?: boolean }} [previews]  Which redacted
+ *   previews receipts carry; both unless set. A preview is signed, so `vw shred`
+ *   cannot remove it later: logs that will see personal data the redactor does
+ *   not recognise (names, addresses) should record commitments only.
  */
 export declare class McpProxy extends EventEmitter {
     opts: ProxyOptions;
@@ -172,6 +201,7 @@ export declare class McpProxy extends EventEmitter {
     policy: import("@vouchwell/core").Policy;
     namespace: string;
     history: History;
+    _historySeen: number;
     /** In-flight upstream calls, keyed by JSON-RPC id. */
     _pending: Map<any, any>;
     /** @type {import('node:child_process').ChildProcessWithoutNullStreams|null} */
@@ -193,6 +223,23 @@ export declare class McpProxy extends EventEmitter {
     };
     /** @param {ProxyOptions} opts */
     constructor(opts: ProxyOptions);
+    /**
+     * A JSON-RPC batch: an array of messages in one line, which MCP's
+     * 2025-03-26 revision allowed.
+     *
+     * Only single messages are checked against policy. A batch used to be
+     * forwarded as it was, so a tools/call inside one reached the server with
+     * no decision and no receipt. Answering a batch takes one array back, so a
+     * batch holding a tools/call is refused whole: each tool call is recorded
+     * as refused and answered with the reason, every other request in it with
+     * an error. Batches without a tool call pass through as before.
+     *
+     * @param {any[]} batch
+     * @param {import('node:child_process').ChildProcessWithoutNullStreams} child
+     * @param {NodeJS.WritableStream} stdout
+     * @private
+     */
+    private _handleBatch;
     /**
      * The actor a receipt names. `agent` is what the operator configured, or,
      * when nothing was, the client's own name, the best identifier there is.
@@ -259,6 +306,8 @@ export declare class McpProxy extends EventEmitter {
      * @returns {import('@vouchwell/core').Receipt}
      */
     _record(args: object): import('@vouchwell/core').Receipt;
+    /** Add the log's entries that history has not seen yet. @private */
+    private _syncHistory;
     /**
      * Flush anything still in flight when shutting down.
      *

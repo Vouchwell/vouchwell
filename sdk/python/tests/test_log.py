@@ -234,3 +234,22 @@ def test_a_bundle_from_before_the_rename_still_verifies(log):
     old = dict(bundle, kind="proofwire.bundle")
     assert verify_bundle(old)["ok"]
     assert not verify_bundle(dict(bundle, kind="something.bundle"))["ok"]
+
+
+def test_a_clock_that_steps_back_is_a_warning_not_a_failure(log):
+    # NTP corrects a clock by 300 ms between two calls. The log is honest; the
+    # same rule holds in @vouchwell/core and the website's verifier.
+    for ts in ("2026-11-14T10:00:00.500Z", "2026-11-14T10:00:00.200Z"):
+        log.append(
+            ts=ts,
+            actor={"agent": "a", "runtime": "test", "session": "s", "principal": "p"},
+            action={"kind": "tool_call", "target": "t", "params": {}},
+            decision={"outcome": "allow", "policy": "p1", "rules": []},
+        )
+    log.checkpoint()
+    audit = log.audit()
+    assert audit["ok"], audit["issues"]
+    assert len(audit["warnings"]) == 1
+    res = verify_bundle(json.loads(json.dumps(log.bundle())))
+    assert res["ok"], res["issues"]
+    assert any("precedes" in w for w in res["warnings"])

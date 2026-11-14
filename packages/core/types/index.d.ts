@@ -12,6 +12,7 @@ export { RECEIPT_VERSION, GENESIS_PREV, seal, openSeal, buildReceipt, receiptDig
 export { CHECKPOINT_VERSION, buildCheckpoint, checkpointDigest, signCheckpoint, signCheckpointWith, cosign, cosignWith, verifyCheckpoint, } from './checkpoint.js';
 export { ProofLog, verifyBundle, consistencyFor } from './log.js';
 export { LogAppender } from './appender.js';
+export { withLock, lockIsBusy } from './lock.js';
 export { Policy, History, parseWindow, globMatch } from './policy.js';
 export { regexProblem } from './safe-regex.js';
 export { redact, hasSecrets, DEFAULT_DETECTORS } from './redact.js';

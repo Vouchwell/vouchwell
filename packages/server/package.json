@@ -1,6 +1,6 @@
 {
   "name": "@vouchwell/server",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "type": "module",
   "description": "Vouchwell hub — multi-tenant transparency log, policy registry, approvals, and witness service.",
   "license": "Apache-2.0",
@@ -55,7 +55,7 @@
     "test": "node --no-warnings=ExperimentalWarning --test"
   },
   "dependencies": {
-    "@vouchwell/core": "0.8.1"
+    "@vouchwell/core": "0.8.2"
   },
   "engines": {
     "node": ">=22.13"

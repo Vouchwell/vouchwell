@@ -322,8 +322,13 @@ live in a separate file. So:
 - **Erasure and audit stop being in conflict.** `vw shred --before 2026-01-01`
   destroys the salts. Those payloads become permanently unopenable — by you,
   by a court, by whoever steals the directory in 2029 — while every signature,
-  chain link and inclusion proof still verifies. That is a real GDPR Article 17
-  erasure that does not gut your audit trail.
+  chain link and inclusion proof still verifies.
+- **The preview is the exception.** It is signed into the receipt, so
+  shredding cannot remove it, and redaction masks keys, cards, emails and
+  phone numbers, not names or addresses. Where arguments carry personal data,
+  set `"previews": "none"` in `vouchwell.config.json` so receipts hold
+  commitments only; then shredding is the whole erasure. `vw shred` says how
+  many of the receipts it matched still carry a preview.
 
 ### 4. Witnesses close the last hole
 
@@ -498,7 +503,7 @@ install, no token. It fails the build if a bundle was edited, truncated, or
 signed by a key other than yours:
 
 ```yaml
-- uses: Vouchwell/vouchwell/verify@v0.8.1
+- uses: Vouchwell/vouchwell/verify@v0.8.2
   with:
     log-keys: evidence/log-keys.json   # from `vw keys`
 ```

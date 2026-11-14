@@ -8,10 +8,17 @@
  * load — so it lives here, alone, with tests.
  */
 
+import { StringDecoder } from 'node:string_decoder';
+
 export class LineFramer {
   constructor() {
     /** @type {string} */
     this._buf = '';
+    // A chunk boundary can fall inside a multi-byte UTF-8 character. Decoding
+    // each chunk on its own turned the two halves into U+FFFD, and the proxy
+    // forwarded the mangled text upstream. The decoder holds the first half
+    // back until the rest arrives.
+    this._decoder = new StringDecoder('utf8');
   }
 
   /**
@@ -25,7 +32,7 @@ export class LineFramer {
    * @returns {{ message?: unknown, raw: string, error?: Error }[]}
    */
   push(chunk) {
-    this._buf += chunk.toString();
+    this._buf += typeof chunk === 'string' ? chunk : this._decoder.write(chunk);
     const out = [];
     let nl;
     while ((nl = this._buf.indexOf('\n')) !== -1) {

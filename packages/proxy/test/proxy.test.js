@@ -695,3 +695,145 @@ test('clientIdentity keeps a bounded name and version, and nothing else', () => 
   assert.equal(long?.name.length, 128);
   assert.equal(long?.version?.length, 64);
 });
+
+test('a multi-byte character split across chunks arrives whole', () => {
+  const text = 'café 日本 🙂';
+  const buf = Buffer.from(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { arguments: { text } } }) + '\n');
+  // Every split point, including inside each multi-byte character.
+  for (let cut = 1; cut < buf.length - 1; cut++) {
+    const f = new LineFramer();
+    const out = [...f.push(buf.subarray(0, cut)), ...f.push(buf.subarray(cut))];
+    assert.equal(out.length, 1);
+    assert.equal(out[0].message.params.arguments.text, text, `split at byte ${cut}`);
+  }
+});
+
+test('a tools/call inside a JSON-RPC batch is refused and recorded, never forwarded', async () => {
+  const batch = [
+    call(1, 'query', { sql: 'DROP TABLE users' }),
+    { jsonrpc: '2.0', id: 2, method: 'tools/list' },
+    { jsonrpc: '2.0', method: 'notifications/cancelled', params: {} },
+  ];
+  const { received, log } = await run({
+    policy: { rules: [] },
+    // A plain request after it, so the harness waits until the batch was handled.
+    send: [batch, { jsonrpc: '2.0', id: 3, method: 'tools/list' }],
+  });
+  const reply = received.find((m) => Array.isArray(m));
+  assert.ok(reply, 'the batch is answered with one array');
+  assert.equal(reply.length, 2, 'one answer per request; none for the notification');
+  const toolReply = reply.find((r) => r.id === 1);
+  assert.equal(toolReply.result.isError, true);
+  assert.match(toolReply.result.content[0].text, /JSON-RPC batch is refused/);
+  assert.equal(reply.find((r) => r.id === 2).error.code, -32600);
+
+  const receipts = log.entries.filter((r) => r.action.target === 'ops.query');
+  assert.equal(receipts.length, 1);
+  assert.equal(receipts[0].decision.outcome, 'deny');
+  assert.deepEqual(receipts[0].decision.rules, ['proxy.batch']);
+  assert.equal(log.audit().ok, true);
+});
+
+test('a batch with no tool call in it still passes through', async () => {
+  const { received } = await run({
+    policy: { rules: [] },
+    send: [[{ jsonrpc: '2.0', method: 'notifications/initialized' }], { jsonrpc: '2.0', id: 9, method: 'tools/list' }],
+  });
+  assert.ok(received.some((m) => m.id === 9 && Array.isArray(m.result?.tools)));
+});
+
+test('an amount the budget cannot read is refused, not waved through', async () => {
+  const metrics = { 'ops.refund': { amount_usd: { from: 'params.amount', scale: 0.01 } } };
+  const policy = { budgets: [{ id: 'refunds.daily', match: { target: 'ops.refund' }, field: 'metrics.amount_usd', limit: 100, window: '24h', then: 'deny' }] };
+  const { byId, log } = await run({
+    policy,
+    metrics,
+    send: [
+      call(1, 'refund', { order: 'a', amount: '9,000' }),
+      call(2, 'refund', { order: 'b', amount: '9000abc' }),
+      call(3, 'refund', { order: 'c', amount: 4500 }),
+      call(4, 'refund', { order: 'd' }),
+    ],
+  });
+  for (const id of [1, 2]) {
+    assert.equal(byId.get(id)?.result?.isError, true, `call ${id} should be refused`);
+    assert.match(byId.get(id).result.content[0].text, /cannot be checked/);
+  }
+  assert.notEqual(byId.get(3)?.result?.isError, true, 'a readable amount under the cap runs');
+  assert.notEqual(byId.get(4)?.result?.isError, true, 'no amount at all spends nothing');
+  assert.equal(log.audit().ok, true);
+});
+
+test('extractMetricsChecked tells an absent amount from an unreadable one', async () => {
+  const { extractMetricsChecked } = await import('../src/proxy.js');
+  const cfg = { 'ops.refund': { amount_usd: { from: 'params.amount', scale: 0.01 } } };
+  const read = (amount) => extractMetricsChecked(cfg, 'ops.refund', amount === undefined ? {} : { amount });
+  assert.deepEqual(read(9000), { metrics: { amount_usd: 90 }, unreadable: [] });
+  assert.deepEqual(read('9000'), { metrics: { amount_usd: 90 }, unreadable: [] });
+  assert.deepEqual(read(undefined), { metrics: {}, unreadable: [] });
+  for (const bad of ['9,000', '9000abc', '1e400', '', true, [9000], { v: 1 }]) {
+    assert.deepEqual(read(bad), { metrics: {}, unreadable: ['amount_usd'] }, JSON.stringify(bad));
+  }
+});
+
+/** A terminal that, like a real one, gives what is typed to every reader still open. */
+function fakeTerminal() {
+  const term = { readers: new Set(), prompts: 0 };
+  term.open = () => {
+    const input = new PassThrough();
+    term.readers.add(input);
+    input.on('close', () => term.readers.delete(input));
+    const output = new PassThrough();
+    output.on('data', (d) => { if (String(d).includes('approval required')) term.prompts++; });
+    return { input, output };
+  };
+  term.type = (line) => { for (const r of term.readers) if (!r.destroyed) r.write(line + '\n'); };
+  return term;
+}
+
+const tick = () => new Promise((r) => setTimeout(r, 20));
+const request = (target) => ({ target, params: {}, reason: 'needs a person', rules: ['r'], actor: { principal: 'ops@acme.test' } });
+
+test('the terminal asks one question at a time, so an answer goes to the call it was given for', async () => {
+  const { ttyApprover } = await import('../src/approve.js');
+  const term = fakeTerminal();
+  const approve = ttyApprover({ open: term.open, timeoutMs: 5000 });
+  const first = approve(request('ops.refund'));
+  const second = approve(request('ops.send_email'));
+  await tick();
+  assert.equal(term.prompts, 1, 'the second prompt waits for the first answer');
+  term.type('y');
+  assert.equal((await first).approved, true);
+  await tick();
+  assert.equal(term.prompts, 2);
+  term.type('n');
+  assert.equal((await second).approved, false, 'the "y" typed for the refund did not approve the email');
+});
+
+test('a prompt that times out stops reading the terminal', async () => {
+  const { ttyApprover } = await import('../src/approve.js');
+  const term = fakeTerminal();
+  const approve = ttyApprover({ open: term.open, timeoutMs: 30 });
+  const res = await approve(request('ops.refund'));
+  assert.equal(res.by, 'policy:timeout');
+  await tick();
+  assert.equal(term.readers.size, 0, 'no reader is left to swallow the next line typed');
+});
+
+test('a prompt shows agent-supplied arguments with control characters escaped', async () => {
+  const { ttyApprover } = await import('../src/approve.js');
+  const term = fakeTerminal();
+  let shown = '';
+  const open = () => {
+    const io = term.open();
+    io.output.on('data', (d) => { shown += String(d); });
+    return io;
+  };
+  const approve = ttyApprover({ open, timeoutMs: 5000 });
+  const pending = approve({ ...request('ops.refund'), params: { note: 'ok‮ evil' } });
+  await tick();
+  term.type('n');
+  await pending;
+  assert.doesNotMatch(shown, /‮/);
+  assert.match(shown, /\\u202e/);
+});
