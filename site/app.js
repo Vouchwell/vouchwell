@@ -505,3 +505,28 @@ function showWitnessKeys(record) {
   term.classList.add('staged');
   term.querySelectorAll('.reveal').forEach((node, i) => setTimeout(() => node.classList.add('in'), 300 + i * 420));
 })();
+
+// Copy buttons beside the Claude Code commands. Hidden in the markup and shown
+// only where the browser can write to the clipboard, so the page never offers
+// what it cannot do; without this script the commands are still there to
+// select. One per command, because Claude Code runs one slash command per
+// message: pasting both at once would run neither.
+(function copyButtons() {
+  if (!navigator.clipboard?.writeText) return;
+  for (const button of document.querySelectorAll('button[data-copy]')) {
+    const source = $(button.dataset.copy);
+    if (!source) continue;
+    button.hidden = false;
+    let reset;
+    button.addEventListener('click', async () => {
+      clearTimeout(reset);
+      try {
+        await navigator.clipboard.writeText(source.textContent.trim());
+        button.textContent = 'Copied';
+      } catch {
+        button.textContent = 'Select it instead';
+      }
+      reset = setTimeout(() => { button.textContent = 'Copy'; }, 1800);
+    });
+  }
+})();
