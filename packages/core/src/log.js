@@ -174,24 +174,30 @@ export class ProofLog {
    */
   refresh(opts = {}) {
     const file = path.join(this.dir, FILES.entries);
-    let size;
+    // Open, then size the file that is open. Sizing the path and then opening
+    // it reads one file's length from what may by then be another (replaced
+    // by a rename, say).
+    let fd;
     try {
-      size = fs.statSync(file).size;
+      fd = fs.openSync(file, 'r');
     } catch (err) {
       if (/** @type {NodeJS.ErrnoException} */ (err).code === 'ENOENT') return [];
       throw err;
     }
-    if (size === this._bytes) return [];
-    if (size < this._bytes) {
-      throw new Error(
-        `entries.jsonl in ${this.dir} is ${size} bytes, shorter than the ${this._bytes} already read: ` +
-          'it was truncated or rewritten',
-      );
-    }
-    const buf = Buffer.alloc(size - this._bytes);
-    const fd = fs.openSync(file, 'r');
+    let buf;
     try {
-      fs.readSync(fd, buf, 0, buf.length, this._bytes);
+      const size = fs.fstatSync(fd).size;
+      if (size === this._bytes) return [];
+      if (size < this._bytes) {
+        throw new Error(
+          `entries.jsonl in ${this.dir} is ${size} bytes, shorter than the ${this._bytes} already read: ` +
+            'it was truncated or rewritten',
+        );
+      }
+      buf = Buffer.alloc(size - this._bytes);
+      // A short read (the file shrank after fstat) leaves zeros at the end;
+      // keep only what was read.
+      buf = buf.subarray(0, fs.readSync(fd, buf, 0, buf.length, this._bytes));
     } finally {
       fs.closeSync(fd);
     }

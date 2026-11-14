@@ -144,6 +144,9 @@ export function ttyApprover(opts = {}) {
  * @returns {{ input: NodeJS.ReadableStream & { destroy(): void }, output: NodeJS.WritableStream }}
  */
 function openTerminal() {
+  // Opened twice, to read and to write (two devices on Windows, CONIN$ and
+  // CONOUT$). The first open checks nothing the second relies on, so CodeQL's
+  // "file system race" here is not one.
   const win = process.platform === 'win32';
   const inFd = fs.openSync(win ? '\\\\.\\CONIN$' : '/dev/tty', 'r');
   let outFd;
