@@ -5,6 +5,19 @@ up to 0.5.0 `proofwire` and `@proof_wire/*` — release together at the same ver
 
 ## Unreleased
 
+### Fixed
+
+- **Terminal approvals on Windows could answer the wrong call.** The fix in
+  0.8.2 covered Linux and macOS; Windows still read the console with a file
+  stream, whose read stayed blocked after its prompt was done, took the line
+  typed for the next prompt (which then timed out and denied), and kept `vw
+  proxy` running after its server had exited. The console is now read
+  through a terminal handle, as `process.stdin` reads one, and opened for
+  writing too, which libuv needs to stop a waiting read. Tested against a
+  real console on Windows CI.
+- **The release waits up to ten minutes for npm**, not three and a half, before
+  making the GitHub release, PyPI upload and MCP Registry entry.
+
 ## 0.8.2 — 2026-11-15
 
 Fifteen fixes from a full review of the codebase, and TypeScript types:
