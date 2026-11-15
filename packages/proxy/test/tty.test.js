@@ -155,7 +155,7 @@ $report = [ConsoleDriver]::Run($env:VW_NODE, $env:VW_CHILD, $env:VW_RESULT, $env
 /**
  * @param {string[]} answers  One per prompt; '' to let it time out.
  * @param {number} timeoutMs  The approver's deadline.
- * @returns {Promise<{ ended: boolean, decisions: Array<[boolean, string]> }>}
+ * @returns {Promise<{ ended: boolean, decisions: Array<[boolean, string]>, screen: string }>}
  */
 async function approveAtTerminal(answers, timeoutMs) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vw-tty-'));
@@ -197,13 +197,16 @@ async function approveAtTerminal(answers, timeoutMs) {
     ({ ended, screen } = JSON.parse(stdout));
   }
   assert.ok(fs.existsSync(result), `no result; the terminal showed:\n${screen}`);
-  return { ended, decisions: JSON.parse(fs.readFileSync(result, 'utf8')) };
+  return { ended, screen, decisions: JSON.parse(fs.readFileSync(result, 'utf8')) };
 }
 
 test('each prompt at a real terminal gets the answer typed for it, and the process exits', { skip }, async () => {
-  const { ended, decisions } = await approveAtTerminal(['y', 'n', 'y'], 15_000);
+  const { ended, decisions, screen } = await approveAtTerminal(['y', 'n', 'y'], 15_000);
   assert.deepEqual(decisions, [[true, 'tty'], [false, 'tty'], [true, 'tty']]);
   assert.equal(ended, true, 'nothing is left reading the terminal');
+  // Written to a Windows console as UTF-8 bytes, the box came out as ΓöîΓöÇ in
+  // any code page but UTF-8's.
+  assert.match(screen, /┌─ Vouchwell: approval required/);
 });
 
 test('after a prompt times out, the next one still gets its answer', { skip }, async () => {
