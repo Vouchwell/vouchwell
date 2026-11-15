@@ -24,7 +24,9 @@ Fifteen fixes from a full review of the codebase, and TypeScript types:
   and `vw verify` reported tampering on an honest log. Every write through
   `ProofLog` now takes the log's lock (the one `vw hook` already used, moved
   into the core and made reentrant) and first reads what other writers
-  appended. Budgets and rate limits count every writer's calls.
+  appended. Budgets and rate limits count every writer's calls. On Windows,
+  a writer that read the lock just as its holder released it failed with
+  EPERM and lost its receipt; it now waits its turn.
 - **`vw init --log <dir>` left the signing key out of `.gitignore`.** The
   rules and the config named `.vouchwell` whatever `--log` said, so
   `git add -A` staged `<dir>/key.pem` and the salts, and `vw proxy` could not

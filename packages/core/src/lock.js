@@ -27,12 +27,24 @@ const LOCK = 'hook.lock';
  */
 const held = new Map();
 
-/** @param {string} file @returns {string | null} */
-function readIfPresent(file) {
+/**
+ * The lock file's contents, or null when there is none to read: gone, or on
+ * Windows being deleted. A file deleted while another process has it open is
+ * "delete pending" there, and opening it fails with EPERM, as creating it does
+ * (lockIsBusy). A writer that read the lock just as its holder released it
+ * used to throw, and its receipt was lost. Null is treated as held, so the
+ * next attempt settles it.
+ *
+ * @param {string} file
+ * @param {string} [platform]
+ * @returns {string | null}
+ */
+function readIfPresent(file, platform) {
   try {
     return fs.readFileSync(file, 'utf8');
   } catch (e) {
-    if (/** @type {NodeJS.ErrnoException} */ (e).code === 'ENOENT') return null;
+    const code = /** @type {NodeJS.ErrnoException} */ (e).code;
+    if (code === 'ENOENT' || lockIsBusy(code, platform)) return null;
     throw e;
   }
 }
@@ -136,7 +148,7 @@ export function withLock(dir, fn, opts = {}) {
       // A writer that died holding the lock must not stop every later one.
       // The lock names its holder, so a dead holder's lock is taken over.
       if (code === 'EEXIST') {
-        const holder = readIfPresent(file);
+        const holder = readIfPresent(file, opts.platform);
         if (!holderAlive(holder) && abandoned(file, holder)) fs.rmSync(file, { force: true, maxRetries: 5, retryDelay: 20 });
       }
       if (Date.now() > deadline) throw new Error(`the log at ${dir} stayed locked for ${waitMs / 1000}s (last: ${code})`);
