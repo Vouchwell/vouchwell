@@ -122,11 +122,13 @@ jobs:
       - name: Confirm every package is on npm
         # A GitHub release says "this version exists"; it only gets made if
         # every package at the tagged version is genuinely on npm. A package
-        # can take a minute or two to appear after publishing, so this waits.
+        # can take minutes to appear after publishing, so this waits up to
+        # ten. 0.8.2's last two packages took five, after the three and a half
+        # this used to wait, and the release had to be re-run to finish.
         if: env.RELEASE_TAG != '' && github.event.inputs.dry_run != 'true'
         run: |
           V="${RELEASE_TAG#v}"
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+          for attempt in $(seq 30); do
             missing=0
             for p in packages/*/package.json; do
               [ "$(node -p "require('./$p').private === true")" = true ] && continue
