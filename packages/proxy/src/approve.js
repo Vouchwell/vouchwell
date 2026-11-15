@@ -146,13 +146,15 @@ export function ttyApprover(opts = {}) {
  */
 function openTerminal() {
   if (process.platform === 'win32') {
-    // Two devices on Windows: the console's input, and its screen. The input
-    // is opened for writing too: libuv stops a read waiting on the console by
-    // putting an Enter keypress into its input, which needs write access.
+    // Two devices on Windows: the console's input, and its screen. Both are
+    // opened for reading and writing. A terminal handle reads the console's
+    // mode and the screen's size, which needs read access (opened for writing
+    // only, the screen is not even seen as a console), and libuv stops a read
+    // waiting on the input by putting an Enter keypress into it.
     const inFd = fs.openSync('\\\\.\\CONIN$', 'r+');
     let outFd;
     try {
-      outFd = fs.openSync('\\\\.\\CONOUT$', 'w');
+      outFd = fs.openSync('\\\\.\\CONOUT$', 'r+');
     } catch (err) {
       fs.closeSync(inFd);
       throw err;
