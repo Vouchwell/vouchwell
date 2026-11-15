@@ -2,7 +2,11 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ProofLog, LogAppender, History, parseWindow, entryHash, canonicalize } from '@vouchwell/core';
+import { ProofLog, LogAppender, History, parseWindow, entryHash, canonicalize, withLock, lockIsBusy } from '@vouchwell/core';
+
+// The writer lock lives in the core now, shared with `vw proxy`; re-exported for
+// this module's callers and tests.
+export { withLock, lockIsBusy };
 import { c, out, err, ok, bad, info, heading, kv } from './ui.js';
 
 /**
@@ -117,7 +121,6 @@ function workspaceOf(raw) {
   if (/^\/[A-Za-z]:[\\/]/.test(dir)) dir = dir.slice(1);
   return dir;
 }
-const LOCK = 'hook.lock';
 
 /**
  * @param {any} args
@@ -587,7 +590,7 @@ function append(ctx, a) {
  *
  * @param {string} mode
  */
-function previewsFor(mode) {
+export function previewsFor(mode) {
   if (mode === 'all') return { params: true, result: true };
   if (mode === 'none') return { params: false, result: false };
   if (mode === 'params') return { params: true, result: false };
@@ -655,104 +658,3 @@ function readIfPresent(file) {
   }
 }
 
-/**
- * Whether the process a lock file names is still running. A lock that is gone,
- * or not yet written, is treated as held: the next attempt settles it.
- *
- * @param {string | null} text
- */
-function holderAlive(text) {
-  const pid = Number(text);
-  if (text === null || !Number.isInteger(pid) || pid <= 0) return true;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    // EPERM: it exists and belongs to someone else.
-    return /** @type {NodeJS.ErrnoException} */ (e).code !== 'ESRCH';
-  }
-}
-
-/** How long a dead holder's lock must sit unchanged before it is taken over. */
-const ABANDONED_MS = 1000;
-
-/**
- * Whether the lock still names `holder`, a process that has exited, and has
- * not been touched for a while.
- *
- * "Its holder is dead" alone is not enough. Reading the holder and removing
- * the file are two steps: in between, that holder can release the lock and
- * exit, and a third writer take it. Removing the file then removes a live
- * lock, two writers append at once, and a receipt is lost. That was seen as
- * seven receipts from eight parallel calls. A lock taken a moment ago is
- * fresh, so it is never mistaken for one a crash left behind.
- *
- * @param {string} file
- * @param {string | null} holder
- */
-function abandoned(file, holder) {
-  try {
-    if (Date.now() - fs.statSync(file).mtimeMs < ABANDONED_MS) return false;
-    return readIfPresent(file) === holder;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Whether a failure to create the lock file means "someone else has it, try
- * again" rather than a real error.
- *
- * On Windows, a file deleted while another process still has it open stays
- * "delete pending" until that handle closes, and creating the same name in
- * that window fails with EPERM or EACCES, not EEXIST. A writer releasing the
- * lock while a waiting one reads it to see who holds it is exactly that, and
- * treating it as fatal lost a parallel tool call's receipt.
- *
- * @param {string | undefined} code
- * @param {string} [platform]
- */
-export function lockIsBusy(code, platform = process.platform) {
-  if (code === 'EEXIST') return true;
-  return platform === 'win32' && (code === 'EPERM' || code === 'EACCES' || code === 'EBUSY');
-}
-
-/**
- * Run `fn` holding the log's hook lock: one writer at a time.
- *
- * @template T
- * @param {string} dir
- * @param {() => T} fn
- * @param {{ platform?: string }} [opts]  For tests.
- * @returns {T}
- */
-export function withLock(dir, fn, opts = {}) {
-  fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, LOCK);
-  const waitMs = Number(process.env.VOUCHWELL_HOOK_LOCK_WAIT_MS) || 15_000;
-  const deadline = Date.now() + waitMs;
-  const nap = new Int32Array(new SharedArrayBuffer(4));
-  for (;;) {
-    try {
-      fs.writeFileSync(file, String(process.pid), { flag: 'wx' });
-      break;
-    } catch (e) {
-      const code = /** @type {NodeJS.ErrnoException} */ (e).code;
-      if (!lockIsBusy(code, opts.platform)) throw e;
-      // A writer that died holding the lock must not stop every later one.
-      // The lock names its holder, so a dead holder's lock is taken over.
-      if (code === 'EEXIST') {
-        const holder = readIfPresent(file);
-        if (!holderAlive(holder) && abandoned(file, holder)) fs.rmSync(file, { force: true, maxRetries: 5, retryDelay: 20 });
-      }
-      if (Date.now() > deadline) throw new Error(`the log at ${dir} stayed locked for ${waitMs / 1000}s (last: ${code})`);
-      Atomics.wait(nap, 0, 0, 20);
-    }
-  }
-  try {
-    return fn();
-  } finally {
-    // Retried, for the same Windows reason: a reader can be holding it.
-    fs.rmSync(file, { force: true, maxRetries: 5, retryDelay: 20 });
-  }
-}

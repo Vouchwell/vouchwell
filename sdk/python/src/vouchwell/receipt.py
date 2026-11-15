@@ -181,8 +181,14 @@ def verify_receipt(receipt: Any, keyring: dict) -> list[dict]:
 
 
 def verify_chain(receipts: list[dict], keyring: dict, expect_prev: str = GENESIS_PREV, expect_seq: int = 0) -> dict:
-    """Signatures, sequence, hash chain and timestamp order, end to end."""
+    """Signatures, sequence, hash chain and timestamp order, end to end.
+
+    A timestamp that goes backwards is a warning, not an issue: clocks step back
+    (NTP, a resumed VM), and failing on it called an honest log tampered. The
+    same in @vouchwell/core and the website's verifier.
+    """
     issues: list[dict] = []
+    warnings: list[dict] = []
     prev, expected, last_ts = expect_prev, expect_seq, None
     for r in receipts:
         issues.extend(verify_receipt(r, keyring))
@@ -193,8 +199,8 @@ def verify_chain(receipts: list[dict], keyring: dict, expect_prev: str = GENESIS
             issues.append({"seq": seq, "kind": "chain", "message": f"chain break: prev is {str(r.get('prev'))[:12]}…, expected {prev[:12]}…"})
         ts = r.get("ts")
         if last_ts and isinstance(ts, str) and ts < last_ts:
-            issues.append({"seq": seq, "kind": "time", "message": f"timestamp {ts} precedes the previous entry's {last_ts}"})
+            warnings.append({"seq": seq, "kind": "time", "message": f"timestamp {ts} precedes the previous entry's {last_ts}"})
         last_ts = ts
         prev = entry_hash(r)
         expected = (seq if isinstance(seq, int) else expected) + 1
-    return {"ok": not issues, "issues": issues, "head": prev, "count": len(receipts)}
+    return {"ok": not issues, "issues": issues, "warnings": warnings, "head": prev, "count": len(receipts)}

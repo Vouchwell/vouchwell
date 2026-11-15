@@ -76,18 +76,38 @@ function pluck(obj, dotted) {
  * @returns {Record<string, number>}
  */
 export function extractMetrics(config, target, params) {
+  return extractMetricsChecked(config, target, params).metrics;
+}
+
+/**
+ * `extractMetrics`, plus the names of metrics whose source value was there
+ * but was not a number. Those used to be dropped, and a budget with no amount
+ * to count let the call through: a refund sent as "9,000" or "9000abc" never
+ * reached a $100 cap. The policy now refuses a budgeted call it cannot count.
+ *
+ * @param {Record<string, any>} config
+ * @param {string} target
+ * @param {unknown} params
+ * @returns {{ metrics: Record<string, number>, unreadable: string[] }}
+ */
+export function extractMetricsChecked(config, target, params) {
   /** @type {Record<string, number>} */
-  const out = {};
+  const metrics = {};
+  /** @type {string[]} */
+  const unreadable = [];
   for (const [pattern, spec] of Object.entries(config ?? {})) {
     if (!globMatch(pattern, target)) continue;
     for (const [name, rule] of Object.entries(/** @type {Record<string, any>} */ (spec))) {
       const from = typeof rule === 'string' ? rule : rule.from;
       const scale = typeof rule === 'string' ? 1 : (rule.scale ?? 1);
-      const raw = Number(pluck({ params }, from));
-      if (Number.isFinite(raw)) out[name] = raw * scale;
+      const value = pluck({ params }, from);
+      if (value === undefined || value === null) continue; // absent: spends nothing
+      const raw = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
+      if (Number.isFinite(raw)) metrics[name] = raw * scale;
+      else unreadable.push(name);
     }
   }
-  return out;
+  return { metrics, unreadable };
 }
 
 /**
@@ -255,6 +275,10 @@ export function launchSpec(command, args, platform = process.platform, which = (
  * @property {Record<string,string>} [env]
  * @property {boolean} [monitor]  Evaluate policy and record what it would have
  *   done, but forward every call. See `_monitor`.
+ * @property {{ params?: boolean, result?: boolean }} [previews]  Which redacted
+ *   previews receipts carry; both unless set. A preview is signed, so `vw shred`
+ *   cannot remove it later: logs that will see personal data the redactor does
+ *   not recognise (names, addresses) should record commitments only.
  */
 
 export class McpProxy extends EventEmitter {
@@ -266,6 +290,7 @@ export class McpProxy extends EventEmitter {
     this.policy = opts.policy;
     this.namespace = opts.namespace ?? '';
     this.history = new History([...opts.log.entries]);
+    this._historySeen = opts.log.entries.length;
 
     /** In-flight upstream calls, keyed by JSON-RPC id. */
     this._pending = new Map();
@@ -275,6 +300,45 @@ export class McpProxy extends EventEmitter {
     /** What the MCP client said it is when it initialized; see `clientIdentity`. */
     this.client = undefined;
     this.stats = { forwarded: 0, denied: 0, escalated: 0, approved: 0, errors: 0, wouldDeny: 0, wouldEscalate: 0 };
+  }
+
+  /**
+   * A JSON-RPC batch: an array of messages in one line, which MCP's
+   * 2025-03-26 revision allowed.
+   *
+   * Only single messages are checked against policy. A batch used to be
+   * forwarded as it was, so a tools/call inside one reached the server with
+   * no decision and no receipt. Answering a batch takes one array back, so a
+   * batch holding a tools/call is refused whole: each tool call is recorded
+   * as refused and answered with the reason, every other request in it with
+   * an error. Batches without a tool call pass through as before.
+   *
+   * @param {any[]} batch
+   * @param {import('node:child_process').ChildProcessWithoutNullStreams} child
+   * @param {NodeJS.WritableStream} stdout
+   * @private
+   */
+  _handleBatch(batch, child, stdout) {
+    if (!batch.some((m) => isRequest(m) && m.method === 'tools/call')) {
+      child.stdin.write(encode(batch));
+      return;
+    }
+    const reason = 'tools/call inside a JSON-RPC batch is refused: send each tool call on its own, so it can be checked against policy and recorded';
+    const replies = [];
+    for (const m of batch) {
+      if (!isRequest(m)) continue; // notifications get no answer
+      if (m.method !== 'tools/call') {
+        replies.push({ jsonrpc: '2.0', id: m.id, error: { code: -32600, message: `Vouchwell: ${reason}` } });
+        continue;
+      }
+      const target = this._qualify(m.params?.name ?? 'unknown');
+      const decision = { outcome: /** @type {const} */ ('deny'), rules: ['proxy.batch'], reason, policy: this.policy.hash };
+      this.stats.denied++;
+      const receipt = this._record({ target, params: m.params?.arguments ?? {}, actor: this._actor(), decision, result: null });
+      this.emit('denied', { target, decision, receipt });
+      replies.push(toolRefusal(m.id, `Blocked by Vouchwell. ${reason}.\nThis refusal is recorded as receipt ${receipt.seq} in log ${receipt.log}.`));
+    }
+    if (replies.length) stdout.write(encode(replies));
   }
 
   /**
@@ -380,6 +444,7 @@ export class McpProxy extends EventEmitter {
     if (isRequest(message) && message.method === 'initialize') {
       this.client = clientIdentity(message.params?.clientInfo);
     }
+    if (Array.isArray(message)) return this._handleBatch(message, child, stdout);
     if (!isRequest(message) || message.method !== 'tools/call') {
       child.stdin.write(encode(message));
       return;
@@ -388,12 +453,14 @@ export class McpProxy extends EventEmitter {
     const target = this._qualify(message.params?.name ?? 'unknown');
     const params = message.params?.arguments ?? {};
     const actor = this._actor();
-    const metrics = extractMetrics(this.opts.metrics ?? {}, target, params);
+    const { metrics, unreadable } = extractMetricsChecked(this.opts.metrics ?? {}, target, params);
+    // Other processes writing this log (another proxy, a coding agent's hooks)
+    // count against the same budgets and rate limits.
+    this.log.refresh?.();
+    this._syncHistory();
 
-    let decision = this.policy.decide(
-      { kind: 'tool_call', target, params, metrics, actor },
-      this.history,
-    );
+    const ctx = { kind: 'tool_call', target, params, metrics, actor, unreadableMetrics: unreadable };
+    let decision = this.policy.decide(ctx, this.history);
 
     /** @type {import('@vouchwell/core').Decision['approval']} */
     let approval;
@@ -416,7 +483,21 @@ export class McpProxy extends EventEmitter {
       if (verdict.approved) {
         this.stats.approved++;
         approval = { by: verdict.by, at: new Date().toISOString(), note: verdict.note };
-        decision = { ...decision, outcome: 'allow', reason: `${decision.reason} — approved by ${verdict.by}` };
+        // Approval can take minutes, and calls allowed meanwhile spent
+        // against the same caps. Approving the escalation is not approving
+        // a budget that has filled up since: that is checked again.
+        this.log.refresh?.();
+        this._syncHistory();
+        const limit = this.policy.recheckLimits?.(ctx, this.history, { skip: decision.rules });
+        decision = limit && limit.outcome !== 'allow'
+          ? {
+              ...decision,
+              outcome: 'deny',
+              rules: [...decision.rules, ...limit.rules],
+              reason: `${decision.reason} — approved by ${verdict.by}, but by then ${limit.reason}`,
+              declined: { by: 'policy:limit-after-approval', at: new Date().toISOString(), note: limit.reason },
+            }
+          : { ...decision, outcome: 'allow', reason: `${decision.reason} — approved by ${verdict.by}` };
       } else {
         decision = {
           ...decision,
@@ -560,12 +641,21 @@ export class McpProxy extends EventEmitter {
       result: args.result,
       phase: args.phase ?? 'atomic',
       ref: args.ref,
+      previews: this.opts.previews,
     });
     // Budgets and rate limits read from history, so it has to include the call
     // we just made — otherwise a burst of concurrent calls all see a stale
     // total and every one of them passes a cap they collectively blow through.
-    this.history.push(receipt);
+    // Anything another writer appended before it comes in too.
+    this._syncHistory();
     return receipt;
+  }
+
+  /** Add the log's entries that history has not seen yet. @private */
+  _syncHistory() {
+    const entries = this.log.entries;
+    for (let i = this._historySeen; i < entries.length; i++) this.history.push(entries[i]);
+    this._historySeen = entries.length;
   }
 
   /**

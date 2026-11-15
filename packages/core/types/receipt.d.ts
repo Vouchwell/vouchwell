@@ -284,16 +284,19 @@ export declare function verifyReceipt(receipt: Receipt, keyring: Keyring): Verif
  * Verify a contiguous run of receipts: signatures, sequence numbers, chain
  * links, and monotonic timestamps.
  *
- * Timestamp regressions are reported but treated as a weaker signal than the
- * rest — clocks genuinely do step backwards, whereas a broken chain link
- * cannot happen by accident.
+ * Timestamp regressions are reported as warnings, not failures: clocks
+ * genuinely do step backwards (NTP, a VM resumed), whereas a broken chain
+ * link cannot happen by accident. Counting them as failures made an honest
+ * log fail `vw verify` and CI the first time its clock was corrected.
  *
  * @param {Receipt[]} receipts  Oldest first.
  * @param {Keyring} keyring
  * @param {object} [opts]
  * @param {string} [opts.expectPrev]  Chain hash the run should start from.
  * @param {number} [opts.expectSeq]   Sequence the run should start at.
- * @returns {{ ok: boolean, issues: VerifyIssue[], head: string, count: number }}
+ * @returns {{ ok: boolean, issues: VerifyIssue[], warnings: VerifyIssue[], head: string, count: number }}
+ *   `issues` are failures; `warnings` (kind `time`) are worth reading but do
+ *   not make `ok` false.
  */
 export declare function verifyChain(receipts: Receipt[], keyring: Keyring, opts?: {
     expectPrev?: string;
@@ -301,6 +304,7 @@ export declare function verifyChain(receipts: Receipt[], keyring: Keyring, opts?
 }): {
     ok: boolean;
     issues: VerifyIssue[];
+    warnings: VerifyIssue[];
     head: string;
     count: number;
 };

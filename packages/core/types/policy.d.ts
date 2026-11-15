@@ -80,6 +80,8 @@ export declare class Policy {
      * @param {string} ctx.target
      * @param {unknown} ctx.params
      * @param {Record<string, number>} [ctx.metrics]  Clear-text numbers budgets aggregate over.
+     * @param {string[]} [ctx.unreadableMetrics]  Metrics whose source value was
+     *   present but not a number. A budget over one of them fails closed.
      * @param {import('./receipt.js').Actor} ctx.actor
      * @param {History} [history]  Prior activity, for budgets and rate limits.
      * @returns {PolicyDecision}
@@ -89,8 +91,37 @@ export declare class Policy {
         target: string;
         params: unknown;
         metrics?: Record<string, number>;
+        unreadableMetrics?: string[];
         actor: import('./receipt.js').Actor;
     }, history?: History): PolicyDecision;
+    /**
+     * Budgets and rate limits alone, again, for a call a person has just
+     * approved.
+     *
+     * The decision was taken before the approver was asked, and approval can
+     * take minutes. Calls allowed meanwhile have spent against the same caps,
+     * so an approval is not a pass to exceed one that has filled up since.
+     * Limits the call was escalated for are skipped: those are what the person
+     * approved.
+     *
+     * @param {object} ctx  As for `decide`.
+     * @param {History} [history]
+     * @param {{ skip?: string[] }} [opts]  Limit ids already approved past.
+     * @returns {PolicyDecision | null}  The limit now in the way, or null.
+     */
+    recheckLimits(ctx: object, history?: History, opts?: {
+        skip?: string[];
+    }): PolicyDecision | null;
+    /**
+     * @param {any} evalCtx
+     * @param {any} ctx
+     * @param {History | undefined} history
+     * @param {string[]} fired
+     * @param {Set<string>} skip
+     * @returns {PolicyDecision | null}
+     * @private
+     */
+    private _limits;
 }
 /**
  * Prior activity, read back out of the log.

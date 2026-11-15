@@ -98,7 +98,8 @@ party can check independently, using nothing but the file you hand them.
   Transparency uses. Verified against the published CT reference vectors.
 - **Sealed** — arguments are salted commitments, not payloads. Destroy the
   salts and those payloads become permanently unopenable while every proof
-  still verifies, so a GDPR erasure does not gut the audit trail.
+  still verifies. Receipts also carry a redacted preview, which is signed and
+  so stays; set `"previews": "none"` where arguments hold personal data.
 
 ## Commands
 

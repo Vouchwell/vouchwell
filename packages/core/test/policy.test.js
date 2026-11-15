@@ -395,3 +395,53 @@ test('a policy document round-trips through JSON with comments', () => {
   assert.equal(p.name, 'finance');
   assert.equal(p.decide(ctx('stripe.payout')).outcome, 'deny');
 });
+
+test('denySecrets and denyPii each hold when both are set, as composing templates does', async () => {
+  const { composePolicy } = await import('../src/index.js');
+  const pii = { kind: 'tool_call', target: 'crm.send', params: { to: 'jane.doe@example.com' }, actor: ACTOR };
+  const secret = { ...pii, params: { key: 'sk-ant-api03-' + 'A'.repeat(90) } };
+  const clean = { ...pii, params: { to: 'the ops channel' } };
+  for (const ids of [['no-personal-data'], ['secrets', 'no-personal-data'], ['no-personal-data', 'secrets']]) {
+    const p = new Policy(composePolicy(ids));
+    assert.equal(p.decide(pii).outcome, 'deny', `${ids.join('+')} lets an email address through`);
+    assert.equal(p.decide(secret).outcome, 'deny', `${ids.join('+')} lets a key through`);
+    assert.equal(p.decide(clean).outcome, 'allow');
+  }
+  const secretsOnly = new Policy(composePolicy(['secrets']));
+  assert.equal(secretsOnly.decide(pii).outcome, 'allow', 'secrets alone still allows personal data');
+  assert.equal(secretsOnly.decide(secret).outcome, 'deny');
+});
+
+test('a limit per argument value counts past calls with that value, and only those', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { ProofLog } = await import('../src/index.js');
+  const log = ProofLog.create(fs.mkdtempSync(path.join(os.tmpdir(), 'vw-per-')));
+  const policy = new Policy({
+    version: 1,
+    rateLimits: [{ id: 'one-refund-per-customer', match: { target: 'refund' }, per: 'params.customer', limit: 1, window: '24h', then: 'deny' }],
+  });
+  const history = new History([]);
+  const call = (customer) => {
+    const ctx = { kind: 'tool_call', target: 'refund', params: { customer, amount: 5 }, metrics: {}, actor: ACTOR };
+    const d = policy.decide(ctx, history);
+    if (d.outcome === 'allow') history.push(log.append({ actor: ACTOR, action: { kind: 'tool_call', target: 'refund', params: ctx.params }, decision: d }));
+    return d.outcome;
+  };
+  assert.equal(call('cus_42'), 'allow');
+  assert.equal(call('cus_42'), 'deny', 'a second refund for the same customer');
+  assert.equal(call('cus_7'), 'allow', 'another customer has their own allowance');
+  // Redacted values are compared redacted on both sides.
+  assert.equal(call('jane@example.com'), 'allow');
+  assert.equal(call('jane@example.com'), 'deny');
+});
+
+test('a pattern written with the g or y flag decides the same way every time', () => {
+  for (const flags of ['iy', 'gi', 'giy']) {
+    const p = new Policy({ version: 1, rules: [{ id: 'deny.drop', when: { 'params.sql': { matches: `/drop table/${flags}` } }, then: 'deny' }] });
+    const decide = (sql) => p.decide({ kind: 'tool_call', target: 'db.query', params: { sql }, actor: ACTOR }).outcome;
+    assert.deepEqual([1, 2, 3, 4].map(() => decide('DROP TABLE users')), ['deny', 'deny', 'deny', 'deny'], `/${flags}`);
+    assert.equal(decide('select 1; DROP TABLE users'), 'deny', `/${flags} anywhere in the string`);
+  }
+});

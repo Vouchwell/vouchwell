@@ -140,6 +140,14 @@ export declare class Store {
         duplicate: boolean;
     };
     /**
+     * @param {any} log
+     * @param {{ receipt: any, hash: string, leaf: Buffer }[]} prepared
+     * @param {MerkleTree} tree
+     * @param {string | undefined} batchId
+     * @private
+     */
+    private _commitBatch;
+    /**
      * @param {string} orgId
      * @param {object} [q]
      * @returns {{ entries: object[], total: number }}

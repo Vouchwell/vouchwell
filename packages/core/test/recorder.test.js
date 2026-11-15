@@ -174,3 +174,73 @@ test('a recorder refuses to start without a log, an agent or a principal', () =>
   assert.throws(() => new Recorder(/** @type {any} */ ({ log: log(), principal: 'p' })), /needs agent/);
   assert.throws(() => new Recorder(/** @type {any} */ ({ log: log(), agent: 'a', principal: '' })), /needs principal/);
 });
+
+test('a call approved after a wait is checked again against budgets that filled up meanwhile', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { ProofLog, Policy, Recorder, PolicyDenied } = await import('../src/index.js');
+  const log = ProofLog.create(fs.mkdtempSync(path.join(os.tmpdir(), 'vw-approve-')));
+  const policy = new Policy({
+    version: 1,
+    rules: [{ id: 'big-refunds-need-a-person', when: { target: 'big_refund' }, then: 'escalate' }],
+    budgets: [{ id: 'refunds.daily', match: { target: '*refund' }, field: 'metrics.amount_usd', limit: 100, window: '24h', then: 'deny' }],
+  });
+  /** @type {(v: any) => void} */
+  let answer = () => {};
+  const rec = new Recorder({
+    log, agent: 'a', principal: 'p', policy,
+    metrics: (_t, args) => ({ amount_usd: args.amount }),
+    approver: () => new Promise((resolve) => { answer = resolve; }),
+  });
+
+  const big = rec.run('big_refund', { amount: 80 }, () => 'refunded');
+  await new Promise((r) => setImmediate(r));
+  // While the person decides, two small refunds go through: $80 of $100.
+  await rec.run('small_refund', { amount: 40 }, () => 'ok');
+  await rec.run('small_refund', { amount: 40 }, () => 'ok');
+  answer({ approved: true, by: 'dana@acme.test' });
+
+  const err = await big.then(() => null, (e) => e);
+  assert.ok(err instanceof PolicyDenied, 'approved, but the cap filled up while waiting');
+  assert.match(err.decision.reason, /approved by dana@acme\.test, but by then budget refunds\.daily would be exceeded/);
+  assert.equal(err.decision.approval.by, 'dana@acme.test', 'the approval is still on record');
+  assert.equal(err.decision.declined.by, 'policy:limit-after-approval');
+});
+
+test('approving past the budget the call was escalated for is what the approval means', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { ProofLog, Policy, Recorder } = await import('../src/index.js');
+  const log = ProofLog.create(fs.mkdtempSync(path.join(os.tmpdir(), 'vw-approve-')));
+  const policy = new Policy({
+    version: 1,
+    budgets: [{ id: 'refunds.daily', match: { target: 'refund' }, field: 'metrics.amount_usd', limit: 100, window: '24h', then: 'escalate' }],
+  });
+  const rec = new Recorder({
+    log, agent: 'a', principal: 'p', policy,
+    metrics: (_t, args) => ({ amount_usd: args.amount }),
+    approver: async () => ({ approved: true, by: 'dana@acme.test' }),
+  });
+  assert.equal(await rec.run('refund', { amount: 150 }, () => 'refunded'), 'refunded');
+});
+
+test('a metric that is not a finite number fails its budget closed, and is not recorded', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { ProofLog, Policy, Recorder, PolicyDenied } = await import('../src/index.js');
+  const log = ProofLog.create(fs.mkdtempSync(path.join(os.tmpdir(), 'vw-metric-')));
+  const policy = new Policy({
+    version: 1,
+    budgets: [{ id: 'refunds.daily', match: { target: 'refund' }, field: 'metrics.amount_usd', limit: 100, window: '24h', then: 'deny' }],
+  });
+  const rec = new Recorder({ log, agent: 'a', principal: 'p', policy, metrics: (_t, args) => ({ amount_usd: args.amount }) });
+  for (const amount of [Infinity, NaN]) {
+    const err = await rec.run('refund', { amount: 1 }, () => 'ok', { metrics: { amount_usd: amount } }).then(() => null, (e) => e);
+    assert.ok(err instanceof PolicyDenied, String(amount));
+    assert.equal(err.receipt.action.metrics, undefined, 'a non-finite metric is left out of the receipt');
+  }
+  assert.equal(log.audit().ok, true);
+});

@@ -100,6 +100,7 @@ export class Recorder {
     // Budgets and rate limits read from what this log has already recorded,
     // and from every call made through this recorder since.
     this.history = new History([...opts.log.entries]);
+    this._historySeen = opts.log.entries.length;
     /** Calls sent and not yet answered, for `finalize`. @type {Map<number, { target: string, params: unknown, decision: object, intent: any, startedAt: number }>} */
     this.pending = new Map();
     this._next = 0;
@@ -118,11 +119,24 @@ export class Recorder {
   async run(name, params, fn, opts = {}) {
     const target = this.namespace ? `${this.namespace}.${name}` : name;
     const args = jsonable(params ?? {});
-    const metrics = opts.metrics ?? this.metrics?.(target, args) ?? {};
+    const given = opts.metrics ?? this.metrics?.(target, args) ?? {};
+    // Only finite numbers are recorded. Any other value fails its budget
+    // closed instead: skipped, it let a call through a cap it could not count.
+    /** @type {Record<string, number>} */
+    const metrics = {};
+    /** @type {string[]} */
+    const unreadable = [];
+    for (const [k, v] of Object.entries(given)) {
+      if (typeof v === 'number' && Number.isFinite(v)) metrics[k] = v;
+      else if (v !== undefined && v !== null) unreadable.push(k);
+    }
     const actor = this.actor;
+    // Other processes writing this log count against the same budgets.
+    this.log.refresh?.();
+    this._syncHistory();
 
     let decision = /** @type {any} */ (
-      this.policy ? this.policy.decide({ kind: 'tool_call', target, params: args, metrics, actor }, this.history) : { ...NO_POLICY }
+      this.policy ? this.policy.decide({ kind: 'tool_call', target, params: args, metrics, actor, unreadableMetrics: unreadable }, this.history) : { ...NO_POLICY }
     );
     if (!['allow', 'deny', 'escalate'].includes(decision?.outcome)) {
       throw new TypeError(`policy.decide() must return an outcome of allow, deny or escalate; got ${JSON.stringify(decision?.outcome)}`);
@@ -139,7 +153,21 @@ export class Recorder {
       const at = new Date().toISOString();
       if (verdict.approved) {
         approval = { by: verdict.by, at, note: verdict.note };
-        decision = { ...decision, outcome: 'allow', reason: `${decision.reason} — approved by ${verdict.by}` };
+        // Calls allowed while the approver was deciding spent against the
+        // same caps; an approval does not cover one that has filled up since.
+        this.log.refresh?.();
+        this._syncHistory();
+        const ctx = { kind: 'tool_call', target, params: args, metrics, actor, unreadableMetrics: unreadable };
+        const limit = /** @type {any} */ (this.policy)?.recheckLimits?.(ctx, this.history, { skip: decision.rules });
+        decision = limit && limit.outcome !== 'allow'
+          ? {
+              ...decision,
+              outcome: 'deny',
+              rules: [...decision.rules, ...limit.rules],
+              reason: `${decision.reason} — approved by ${verdict.by}, but by then ${limit.reason}`,
+              declined: { by: 'policy:limit-after-approval', at: new Date().toISOString(), note: limit.reason },
+            }
+          : { ...decision, outcome: 'allow', reason: `${decision.reason} — approved by ${verdict.by}` };
       } else {
         decision = {
           ...decision,
@@ -240,8 +268,16 @@ export class Recorder {
       phase: a.phase ?? 'atomic',
       ref: a.ref,
     });
-    this.history.push(receipt);
+    // The receipt just written, and anything another writer appended before it.
+    this._syncHistory();
     return receipt;
+  }
+
+  /** Add the log's entries that history has not seen yet. @private */
+  _syncHistory() {
+    const entries = this.log.entries;
+    for (let i = this._historySeen; i < entries.length; i++) this.history.push(entries[i]);
+    this._historySeen = entries.length;
   }
 }
 

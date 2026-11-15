@@ -5,6 +5,87 @@ up to 0.5.0 `proofwire` and `@proof_wire/*` — release together at the same ver
 
 ## Unreleased
 
+## 0.8.2 — 2026-11-15
+
+Fifteen fixes from a full review of the codebase, and TypeScript types:
+
+- **Logs stay intact with more than one writer:** two proxies, or a proxy and
+  a coding agent's hooks, on one log no longer break its chain.
+- **Policy gaps closed:** batched tool calls, unreadable amounts, `per`
+  limits, combined egress templates and approvals that outlived a budget.
+- **`vw init --log` keeps the signing key out of git.**
+- **TypeScript declarations** for every library package.
+
+### Fixed
+
+- **Two writers on one log broke it.** `vw proxy` appended the sequence
+  number it remembered, with no lock, so two proxies in one project (two MCP
+  servers), or a proxy beside a coding agent's hooks, wrote duplicate entries
+  and `vw verify` reported tampering on an honest log. Every write through
+  `ProofLog` now takes the log's lock (the one `vw hook` already used, moved
+  into the core and made reentrant) and first reads what other writers
+  appended. Budgets and rate limits count every writer's calls. On Windows,
+  a writer that read the lock just as its holder released it failed with
+  EPERM and lost its receipt; it now waits its turn.
+- **`vw init --log <dir>` left the signing key out of `.gitignore`.** The
+  rules and the config named `.vouchwell` whatever `--log` said, so
+  `git add -A` staged `<dir>/key.pem` and the salts, and `vw proxy` could not
+  find the log. Both now name the folder the log was made in.
+- **`secrets` with `no-personal-data` stopped refusing personal data.** With
+  both egress flags set only secrets were checked; each flag now holds.
+- **A `tools/call` inside a JSON-RPC batch skipped policy.** Batches went
+  straight to the server, with no decision and no receipt. A batch holding a
+  tool call is now refused and each call in it recorded as refused.
+- **An unreadable amount skipped its budget.** A refund of `"9,000"`,
+  `"9000abc"` or `"1e400"` passed a $100 cap. A budgeted call whose amount is
+  present but not a number now gets the budget's outcome; an absent amount
+  still spends nothing.
+- **Approved escalations skipped budgets that filled up while waiting.** A
+  call approved after a wait is checked again against budgets and rate
+  limits, other than the one it was escalated for.
+- **`per` scopes on an argument never counted.** `per: "params.customer"`
+  compared raw arguments with sealed ones, so "one refund per customer"
+  allowed any number. Both sides are now compared as redacted previews.
+- **A sticky `/…/y` pattern alternated deny and allow** on identical calls.
+  `y` is dropped like `g`.
+- **Multi-byte characters split across chunks were corrupted** by the proxy
+  in both directions. Chunks are decoded as a stream.
+- **A clock stepping back failed verification.** A 300 ms NTP correction made
+  `vw verify`, `vw check`, the verify action and the website report an altered
+  log. Timestamps that go backwards are now warnings, in the core, the Python
+  SDK and the website's verifier alike.
+- **Terminal approvals could answer the wrong call.** Concurrent escalations
+  raced for the next line typed. And at a real terminal, a prompt that had
+  been answered or had timed out went on reading it, in a worker thread
+  nothing could stop: it took the line typed for the next prompt, which then
+  timed out and denied, and it kept `vw proxy` running after its server had
+  exited. Prompts now come one at a time, and on Linux and macOS the terminal
+  is opened once and read through a terminal handle, as `process.stdin` is,
+  which stops when the prompt is done. Tested against a pseudo-terminal.
+  Windows still reads the console as before.
+- **`vw check` printed bundle fields unescaped**, so a hostile bundle could
+  put escape sequences on the auditor's terminal. Everything it shows from the
+  bundle is escaped.
+- **The hub's tree could run ahead of its database** when a batch failed
+  mid-commit, and a batch id reused from another log reached that path. The
+  tree is dropped on failure and the id is refused up front.
+- **A receipt with a non-string `prev` crashed hub ingest** with a 500; it is a
+  422.
+
+- **`RecorderOptions.policy` accepts a `Policy`.** Its JSDoc described a
+  `decide` that takes any object, which TypeScript would not match against
+  `Policy.decide`, so the README's own `new Recorder({ policy })` would not
+  have type-checked.
+
+### Changed
+
+- **`vw shred` says what it cannot erase.** A receipt's redacted preview is
+  signed, so it stays, and redaction does not mask names or addresses. `vw
+  shred` now says how many matched receipts keep one, and `vw proxy` takes
+  `"previews": "all" | "params" | "none"` (or `--previews`) as `vw hook` does,
+  so logs that will hold personal data can keep commitments only. The README
+  and the website no longer call shredding a complete erasure on its own.
+
 ### Added
 
 - **TypeScript declarations** for `@vouchwell/core`, `@vouchwell/proxy`,
@@ -18,13 +99,9 @@ up to 0.5.0 `proofwire` and `@proof_wire/*` — release together at the same ver
 - **The public types are exported from `@vouchwell/core`:** `Receipt`,
   `Actor`, `Decision`, `Checkpoint`, `RecorderOptions`, `PolicyDecision` and
   the others a caller handles.
-
-### Fixed
-
-- **`RecorderOptions.policy` accepts a `Policy`.** Its JSDoc described a
-  `decide` that takes any object, which TypeScript would not match against
-  `Policy.decide`, so the README's own `new Recorder({ policy })` would not
-  have type-checked.
+- **`terminalStreams(fd)`** in `@vouchwell/proxy/approve`: the input and
+  output `ttyApprover`'s `open` option takes, over one descriptor, for
+  embedders with a terminal of their own.
 
 ## 0.8.1 — 2026-11-13
 

@@ -8,9 +8,11 @@
  * job, and getting it wrong shows up as rare, unreproducible corruption under
  * load — so it lives here, alone, with tests.
  */
+import { StringDecoder } from 'node:string_decoder';
 export declare class LineFramer {
     /** @type {string} */
     _buf: string;
+    _decoder: StringDecoder;
     constructor();
     /**
      * Feed a chunk; get back whatever complete messages it completed.

@@ -1,6 +1,6 @@
 {
   "name": "@vouchwell/dashboard",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "type": "module",
   "description": "Local read-only dashboard for a Vouchwell log.",
   "license": "Apache-2.0",
@@ -39,7 +39,7 @@
     "test": "node --no-warnings=ExperimentalWarning --test"
   },
   "dependencies": {
-    "@vouchwell/core": "0.8.1"
+    "@vouchwell/core": "0.8.2"
   },
   "engines": {
     "node": ">=20.11"

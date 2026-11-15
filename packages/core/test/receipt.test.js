@@ -197,11 +197,15 @@ test('appending a well-formed entry to a truncated chain is still detected', () 
   assert.notEqual(res.head, honestHead, 'the rewrite must not reproduce the honest head');
 });
 
-test('a backdated timestamp is flagged', () => {
+test('a backdated timestamp is flagged as a warning, not a failure', () => {
   const a = make(0, GENESIS_PREV);
   const b = make(1, entryHash(a), { ts: '2001-01-01T00:00:00.000Z' });
   const res = verifyChain([a, b], keyring);
-  assert.ok(res.issues.some((i) => i.kind === 'time'));
+  // Clocks step back (NTP, a resumed VM). Failing on it called honest logs
+  // tampered; it is reported, and the chain still verifies.
+  assert.ok(res.warnings.some((i) => i.kind === 'time'));
+  assert.equal(res.issues.some((i) => i.kind === 'time'), false);
+  assert.equal(res.ok, true);
 });
 
 test('a sealed value can be revealed later and checked', () => {

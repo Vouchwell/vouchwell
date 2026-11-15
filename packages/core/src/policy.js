@@ -69,7 +69,10 @@ export function toRegExp(source) {
     const delimited = /^\/(.*)\/([gimsuy]*)$/s.exec(body);
     if (delimited) {
       body = delimited[1];
-      flags = delimited[2].replace(/g/g, '');
+      // `g` and `y` make a RegExp remember where its last match ended, and
+      // these are cached and reused: a sticky deny rule alternated deny,
+      // allow, deny on identical calls, and only matched at the very start.
+      flags = delimited[2].replace(/[gy]/g, '');
     }
   }
 
@@ -261,6 +264,8 @@ export class Policy {
    * @param {string} ctx.target
    * @param {unknown} ctx.params
    * @param {Record<string, number>} [ctx.metrics]  Clear-text numbers budgets aggregate over.
+   * @param {string[]} [ctx.unreadableMetrics]  Metrics whose source value was
+   *   present but not a number. A budget over one of them fails closed.
    * @param {import('./receipt.js').Actor} ctx.actor
    * @param {History} [history]  Prior activity, for budgets and rate limits.
    * @returns {PolicyDecision}
@@ -280,10 +285,12 @@ export class Policy {
     //    problem regardless of what the rest of the policy thinks.
     if (this.egress.denySecrets || this.egress.denyPii) {
       const { findings } = redact(ctx.params);
-      const bad = this.egress.denySecrets
-        ? hasSecrets(findings)
-        : findings.length > 0;
-      if (bad && findings.length > 0) {
+      // Each flag stands on its own. Both set used to mean secrets only: the
+      // `secrets` template composed with `no-personal-data` let PII through.
+      const bad =
+        (this.egress.denySecrets && hasSecrets(findings)) ||
+        (this.egress.denyPii && findings.length > 0);
+      if (bad) {
         const types = [...new Set(findings.map((f) => f.type))].join(', ');
         return {
           outcome: 'deny',
@@ -333,8 +340,60 @@ export class Policy {
       };
     }
 
+    // 3–4. Rate limits, then budgets.
+    const limited = this._limits(evalCtx, ctx, history, fired, new Set());
+    if (limited) return limited;
+
+    return {
+      outcome: 'allow',
+      rules: fired,
+      reason: reason || (fired.length
+        ? `matched ${fired.join(', ')}; no rule objected`
+        : 'no rule matched; policy default is allow'),
+      policy: this.hash,
+    };
+  }
+
+  /**
+   * Budgets and rate limits alone, again, for a call a person has just
+   * approved.
+   *
+   * The decision was taken before the approver was asked, and approval can
+   * take minutes. Calls allowed meanwhile have spent against the same caps,
+   * so an approval is not a pass to exceed one that has filled up since.
+   * Limits the call was escalated for are skipped: those are what the person
+   * approved.
+   *
+   * @param {object} ctx  As for `decide`.
+   * @param {History} [history]
+   * @param {{ skip?: string[] }} [opts]  Limit ids already approved past.
+   * @returns {PolicyDecision | null}  The limit now in the way, or null.
+   */
+  recheckLimits(ctx, history, opts = {}) {
+    const c = /** @type {any} */ (ctx);
+    const evalCtx = {
+      kind: c.kind,
+      target: c.target,
+      params: c.params,
+      metrics: c.metrics ?? {},
+      actor: c.actor,
+    };
+    return this._limits(evalCtx, c, history, [], new Set(opts.skip ?? []));
+  }
+
+  /**
+   * @param {any} evalCtx
+   * @param {any} ctx
+   * @param {History | undefined} history
+   * @param {string[]} fired
+   * @param {Set<string>} skip
+   * @returns {PolicyDecision | null}
+   * @private
+   */
+  _limits(evalCtx, ctx, history, fired, skip) {
     // 3. Rate limits.
     for (const limit of this.rateLimits) {
+      if (skip.has(limit.id)) continue;
       if (!matchClause(limit.match ?? limit.when ?? {}, evalCtx)) continue;
       const windowMs = parseWindow(limit.window ?? '1h');
       const used = history ? history.countSince(limit, windowMs, evalCtx) : 0;
@@ -354,11 +413,28 @@ export class Policy {
 
     // 4. Budgets. Checked against the proposed spend, not just prior spend —
     //    the point is to stop the action that would breach the cap.
+    const unreadable = new Set(Array.isArray(ctx.unreadableMetrics) ? ctx.unreadableMetrics : []);
     for (const budget of this.budgets) {
+      if (skip.has(budget.id)) continue;
       if (!matchClause(budget.match ?? budget.when ?? {}, evalCtx)) continue;
       const windowMs = parseWindow(budget.window ?? '24h');
-      const proposed = Number(pluck(evalCtx, budget.field) ?? 0);
-      if (!Number.isFinite(proposed)) continue;
+      const field = String(budget.field);
+      const raw = pluck(evalCtx, field);
+      // Absent means this call spends nothing: a budget over every tool must
+      // not stop the ones without an amount. Present but not a number, it
+      // fails closed. Skipping it let "9,000" or "1e400" through a $100 cap,
+      // to a tool that may well read them as 9000.
+      const proposed = raw === undefined || raw === null ? 0 : typeof raw === 'number' || typeof raw === 'string' ? Number(raw) : NaN;
+      if (!Number.isFinite(proposed) || (field.startsWith('metrics.') && unreadable.has(field.slice('metrics.'.length)))) {
+        fired.push(budget.id);
+        return {
+          outcome: /** @type {Outcome} */ (budget.then ?? 'escalate'),
+          rules: fired,
+          reason: `budget ${budget.id} cannot be checked: the amount in ${field} is not a number`,
+          policy: this.hash,
+          meta: { limit: budget.limit, window: budget.window ?? '24h', unreadable: field },
+        };
+      }
       const spent = history ? history.sumSince(budget, windowMs, evalCtx) : 0;
       if (spent + proposed > budget.limit) {
         fired.push(budget.id);
@@ -374,16 +450,18 @@ export class Policy {
         };
       }
     }
-
-    return {
-      outcome: 'allow',
-      rules: fired,
-      reason: reason || (fired.length
-        ? `matched ${fired.join(', ')}; no rule objected`
-        : 'no rule matched; policy default is allow'),
-      policy: this.hash,
-    };
+    return null;
   }
+}
+
+/**
+ * A `per` value as something `===` can compare: objects and arrays by their
+ * JSON, everything else as it is.
+ *
+ * @param {unknown} v
+ */
+function scopeKey(v) {
+  return v !== null && typeof v === 'object' ? JSON.stringify(v) : v;
 }
 
 /**
@@ -431,7 +509,15 @@ export class History {
   _relevant(rule, windowMs, evalCtx) {
     const cutoff = (this.now ?? Date.now()) - windowMs;
     const clause = rule.match ?? rule.when ?? {};
-    const scope = rule.per ? pluck(evalCtx, rule.per) : undefined;
+    // A past call is known by its receipt, where the arguments are a redacted
+    // preview, so the call being decided is compared in that same form. Read
+    // from the raw arguments on one side and the sealed `{hash, size,
+    // preview}` on the other, `per: "params.customer"` never matched anything
+    // and a limit of one per customer allowed any number.
+    const current = String(rule.per ?? '').startsWith('params.')
+      ? { ...evalCtx, params: redact(/** @type {any} */ (evalCtx).params ?? {}).value }
+      : evalCtx;
+    const scope = rule.per ? scopeKey(pluck(current, rule.per)) : undefined;
 
     return this.entries.filter((e) => {
       // An outcome receipt restates an intent that was already counted.
@@ -439,14 +525,15 @@ export class History {
       if (e.phase === 'outcome') return false;
       if (e.decision?.outcome !== 'allow') return false;
       if (Date.parse(e.ts) < cutoff) return false;
-      if (rule.per && pluck({ actor: e.actor, ...e.action }, rule.per) !== scope) return false;
-      return matchClause(clause, {
+      const past = {
         kind: e.action.kind,
         target: e.action.target,
         params: e.action.params?.preview ?? {},
         metrics: e.action.metrics ?? {},
         actor: e.actor,
-      });
+      };
+      if (rule.per && scopeKey(pluck(past, rule.per)) !== scope) return false;
+      return matchClause(clause, past);
     });
   }
 

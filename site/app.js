@@ -171,10 +171,15 @@ function render(res, bundle, opts) {
     ),
   );
 
-  // ── problems ──
+  // ── problems, then warnings ──
+  // A clock that stepped backwards is listed, marked as not a failure: an
+  // honest log written across an NTP correction still verifies.
+  const warnings = res.warnings ?? [];
   fill($('issues'), [
     ...res.issues.slice(0, 40).map((m) => el('li', {}, el('span', { class: 'x', text: '✗' }), el('span', { text: m }))),
     res.issues.length > 40 ? el('li', { class: 'dim' }, `…and ${res.issues.length - 40} more`) : null,
+    ...warnings.slice(0, 10).map((m) => el('li', { class: 'dim' }, el('span', { text: '!' }), el('span', { text: `${m} (a clock correction; not a failure)` }))),
+    warnings.length > 10 ? el('li', { class: 'dim' }, `…and ${warnings.length - 10} more timestamps that go backwards`) : null,
   ]);
 
   // ── notes: what "verified" does and does not establish ──

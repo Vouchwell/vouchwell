@@ -13,7 +13,7 @@ import { c, plain, out, err, ok, bad, warn, info, heading, kv, table, outcomeBad
 import { witnessKeysFrom, logKeysFrom } from './witness-keys.js';
 import { LOG_DIR, CONFIG_FILE, POLICY_FILE } from './legacy-paths.js';
 import { cmdWitnesses, cmdStreams } from './hub-integrations.js';
-import { cmdHook } from './hook.js';
+import { cmdHook, previewsFor } from './hook.js';
 import { cmdMcp } from './mcp.js';
 import {
   cmdRemote, cmdPush, cmdRemoteVerify, cmdPolicy, cmdCosign, cmdSlack, loadRemotes, resolveRemote,
@@ -116,8 +116,9 @@ const STARTER_POLICY = `{
 
 // No `agent`: left out, `vw proxy` names the agent by the MCP client's own
 // name from its `initialize` request. Set one to name a model or a bot.
-const STARTER_CONFIG = {
-  log: '.vouchwell',
+/** @param {string} log  Where the log is, as the config should name it. */
+const starterConfig = (log) => ({
+  log,
   policy: POLICY,
   actor: {
     principal: process.env.USER || process.env.USERNAME || 'unknown',
@@ -126,7 +127,7 @@ const STARTER_CONFIG = {
   metrics: {
     'stripe.*': { amount_usd: { from: 'params.amount', scale: 0.01 } },
   },
-};
+});
 
 // ──────────────────────────────────────────────────────────── commands ──
 
@@ -170,12 +171,22 @@ function cmdInit(args) {
   const policyText = args.template ? templatePolicyText(args.template) : STARTER_POLICY;
   const log = ProofLog.create(dir);
   const wrotePolicy = writeIfAbsent(POLICY, policyText);
-  writeIfAbsent(CONFIG, JSON.stringify(STARTER_CONFIG, null, 2) + '\n');
+
+  // The config and the ignore rules name the log where it was actually made,
+  // which `--log` can put anywhere. Inside this directory, relative and with
+  // forward slashes, as both files are shared across machines.
+  const rel = path.relative(process.cwd(), dir);
+  const inside = !rel.startsWith('..') && !path.isAbsolute(rel);
+  const where = inside ? rel.split(path.sep).join('/') : dir;
+  writeIfAbsent(CONFIG, JSON.stringify(starterConfig(where || '.'), null, 2) + '\n');
 
   const gitignore = '.gitignore';
-  const rules = ['.vouchwell/key.pem', '.vouchwell/salts.jsonl'];
+  const prefix = inside && where ? `${where}/` : '';
+  const rules = inside ? [`${prefix}key.pem`, `${prefix}salts.jsonl`] : [];
+  // Whole lines, so a commented-out rule does not count as one.
   const existing = readIfPresent(gitignore);
-  const missing = rules.filter((r) => !existing.includes(r));
+  const lines = new Set(existing.split(/\r?\n/).map((l) => l.trim()));
+  const missing = rules.filter((r) => !lines.has(r));
   if (missing.length) {
     fs.appendFileSync(
       gitignore,
@@ -200,6 +211,9 @@ function cmdInit(args) {
     out('');
   }
   info('Commit entries.jsonl and checkpoints.jsonl. Never commit key.pem or salts.jsonl.');
+  if (!inside) {
+    warn(`The log is outside this directory, so ${gitignore} here cannot cover it. Keep ${path.join(dir, 'key.pem')} out of version control wherever it lives.`);
+  }
   out('');
   out(`  Next: wrap an MCP server so every call it makes gets a receipt.`);
   out('');
@@ -294,6 +308,9 @@ async function cmdProxy(args) {
     args: args.rest.slice(1),
     namespace: args.namespace ?? config.namespace,
     metrics: config.metrics,
+    // all (the default), params or none, as for `vw hook`. Previews are
+    // signed: what one holds stays after `vw shred`.
+    previews: previewsFor(args.previews ?? config.previews ?? 'all'),
     monitor,
   });
 
@@ -405,6 +422,7 @@ function cmdVerify(args) {
   if (res.ok) {
     ok(c.bold('Every receipt verifies. The chain is unbroken and extends every checkpoint.'));
     out('');
+    reportClockWarnings(res.warnings.map((w) => `entry ${w.seq}: ${w.message}`));
     const open = reportUnfinished(log.entries);
     return open && args['fail-on-unfinished'] ? 3 : 0;
   }
@@ -606,21 +624,27 @@ function cmdCheck(args) {
       witnessesRequired: minWitnesses,
       witnessedSize: res.witnessedSize ?? null,
       issues: res.issues,
+      warnings: res.warnings ?? [],
     }));
     return res.ok ? 0 : 1;
   }
 
+  // Everything here comes from the bundle, which is the untrusted input this
+  // command exists for: escape sequences in it must not reach the terminal,
+  // where they could paint a verdict over the real one.
   heading(`Bundle · ${plain(bundle.log)}`);
   kv([
-    ['exported', bundle.exported ?? '—'],
-    ['entries', `${res.checked}${bundle.partial ? ` (a subset of ${bundle.treeSize})` : ''}`],
-    ['root', bundle.root],
-    ['checkpoints', String((bundle.checkpoints ?? []).length)],
+    ['exported', plain(bundle.exported ?? '—')],
+    ['entries', `${res.checked}${bundle.partial ? ` (a subset of ${plain(bundle.treeSize)})` : ''}`],
+    ['root', plain(bundle.root)],
+    ['checkpoints', String(Array.isArray(bundle.checkpoints) ? bundle.checkpoints.length : 0)],
   ]);
   out('');
 
   if (res.ok) {
     ok(c.bold('Verified. Every receipt is signed and provably part of this log.'));
+    out('');
+    reportClockWarnings(res.warnings);
     const claimsWitnesses = (bundle.checkpoints ?? []).some((cp) =>
       (cp.sigs ?? []).some((s) => s.role === 'witness'),
     );
@@ -654,7 +678,8 @@ function cmdCheck(args) {
 
   bad(c.bold(`${res.issues.length} problem(s):`));
   out('');
-  for (const i of res.issues) out(`  ${c.red('✗')} ${i}`);
+  // Issue messages quote the bundle (key ids, roots, sizes): escaped too.
+  for (const i of res.issues) out(`  ${c.red('✗')} ${plain(i)}`);
   out('');
   return 1;
 }
@@ -700,6 +725,39 @@ function cmdProve(args) {
   return good ? 0 : 1;
 }
 
+/**
+ * What shredding cannot reach. Salts go, so commitments can no longer be
+ * opened, but a redacted preview is part of the signed receipt and stays.
+ * Redaction masks what it recognises (keys, cards, emails, phone numbers),
+ * not a name or an address, so an erasure has to account for the previews.
+ *
+ * @param {any[]} receipts
+ */
+function previewWarning(receipts) {
+  const kept = receipts.filter((r) => r.action?.params?.preview !== undefined || r.result?.payload?.preview !== undefined).length;
+  if (kept === 0) return;
+  out('');
+  warn(`${kept} of these receipts keep a redacted preview of their arguments or result. A preview is`);
+  warn('signed into the receipt, so shredding cannot remove it, and redaction masks keys, cards,');
+  warn('emails and phone numbers, not names or addresses. Check them before calling this an');
+  warn(`erasure (${c.cyan('vw log --json')}). For logs that will hold personal data, record with`);
+  warn(`${c.cyan('"previews": "none"')} in ${CONFIG}: commitments only.`);
+}
+
+/**
+ * Clock regressions: worth knowing about, but not tampering. Clocks step
+ * backwards (NTP, a resumed VM) and a log written across one is still sound.
+ *
+ * @param {string[] | undefined} warnings
+ */
+function reportClockWarnings(warnings) {
+  if (!warnings?.length) return;
+  warn(`${warnings.length} timestamp(s) go backwards, as when a clock is corrected. Not a failure:`);
+  for (const w of warnings.slice(0, 5)) out(`    ${c.grey(plain(w))}`);
+  if (warnings.length > 5) out(c.grey(`    …and ${warnings.length - 5} more`));
+  out('');
+}
+
 /** @param {any} args */
 function cmdShred(args) {
   const { dir } = loadConfig(args);
@@ -739,6 +797,7 @@ function cmdShred(args) {
 
   if (!args.yes) {
     heading('Crypto-shred (dry run)');
+    previewWarning(matching);
     out(`  This would destroy the commitment salts for ${c.bold(String(matching.length))} entries ${described}.`);
     out('');
     out('  After shredding, those payloads cannot be confirmed by anyone — including you,');
@@ -752,6 +811,7 @@ function cmdShred(args) {
 
   const n = log.shred(predicate);
   ok(`shredded ${n} payload commitment(s) ${described}`);
+  previewWarning(matching);
   const audit = log.audit();
   if (audit.ok) ok('the audit trail still verifies end to end');
   else bad('the log no longer verifies — investigate before relying on it');
@@ -913,6 +973,7 @@ function cmdHelp() {
   out(`      ${c.grey('--no-remote')}                 record locally only, ignore the hub`);
   out(`      ${c.grey('--monitor')}                   block nothing; record what policy would block`);
   out(`      ${c.grey('--enforce')}                   gate even if the config says "monitor": true`);
+  out(`      ${c.grey('--previews all|params|none')}  redacted previews receipts keep (signed: shred cannot remove them)`);
   out(`    ${c.cyan('vw hook install')}                record and gate a coding agent's own tools: shell, edits, reads  ${c.grey('[--client codex|cursor --user --local --monitor]')}`);
   out(`    ${c.cyan('vw hook evidence [dir]')}         checkpoint, and write the log as a bundle to publish  ${c.grey('[default evidence/]')}`);
   out(`    ${c.cyan('vw mcp')}                         this log as an MCP server: agents read, verify and export it  ${c.grey('[--log --config]')}`);

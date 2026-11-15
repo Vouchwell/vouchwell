@@ -18,6 +18,8 @@ export declare class ProofLog {
     tree: MerkleTree;
     /** @type {string} */
     head: string;
+    /** Bytes of entries.jsonl this instance has read, so `refresh` reads only what is new. */
+    _bytes: any;
     /**
      * @param {string} dir
      * @param {object} state
@@ -47,6 +49,23 @@ export declare class ProofLog {
     static open(dir: string, opts?: {
         readOnly?: boolean;
     }): ProofLog;
+    /**
+     * Read whatever other writers have appended since this instance last looked.
+     *
+     * More than one process can write a log: two `vw proxy` processes wrapping
+     * two MCP servers in one project, or a proxy beside a coding agent's hooks.
+     * Every write takes the log's lock and calls this first, so a receipt's
+     * `seq` and `prev` always continue the log as it is on disk, not as it was
+     * when this process opened it.
+     *
+     * @param {{ strict?: boolean }} [opts]  strict: also read a final line with
+     *   no newline, as `open` does. Otherwise that line is assumed to be another
+     *   writer's, still being written, and left for the next call.
+     * @returns {import('./receipt.js').Receipt[]}  The entries that were new.
+     */
+    refresh(opts?: {
+        strict?: boolean;
+    }): import('./receipt.js').Receipt[];
     /** @returns {number} */
     get size(): number;
     /** @returns {string} Current Merkle root, hex. */
@@ -87,6 +106,8 @@ export declare class ProofLog {
             result?: boolean;
         };
     }): import('./receipt.js').Receipt;
+    /** @param {Parameters<ProofLog['append']>[0]} args @private */
+    private _append;
     /**
      * Sign and store the current tree head.
      *
@@ -109,6 +130,8 @@ export declare class ProofLog {
      * @returns {import('./checkpoint.js').Checkpoint}
      */
     addSignature(size: number, signature: import('./checkpoint.js').Signature): import('./checkpoint.js').Checkpoint;
+    /** @param {number} size @param {import('./checkpoint.js').Signature} signature @private */
+    private _addSignature;
     /**
      * The commitment salts for one entry, if they still exist.
      *
@@ -169,13 +192,15 @@ export declare class ProofLog {
      * Full local audit: signatures, chain links, tree consistency, and every
      * historical checkpoint replayed against the log as it stands now.
      *
-     * @returns {{ ok: boolean, size: number, root: string, issues: import('./receipt.js').VerifyIssue[] }}
+     * @returns {{ ok: boolean, size: number, root: string, issues: import('./receipt.js').VerifyIssue[], warnings: import('./receipt.js').VerifyIssue[] }}
+     *   `warnings` are clock regressions: reported, not failures.
      */
     audit(): {
         ok: boolean;
         size: number;
         root: string;
         issues: import('./receipt.js').VerifyIssue[];
+        warnings: import('./receipt.js').VerifyIssue[];
     };
     /**
      * An evidence bundle: everything an outside party needs to verify this log,
@@ -224,7 +249,8 @@ export declare function consistencyFor(tree: MerkleTree, checkpoints: import('./
  * @param {Record<string, string>} [opts.trustedLogKeys]  kid → public key
  *   (base64url) of the log's own signing key(s). When given, everything the
  *   log signed must be signed by one of them.
- * @returns {{ ok: boolean, issues: string[], checked: number }}
+ * @returns {{ ok: boolean, issues: string[], warnings: string[], checked: number }}
+ *   `warnings` (a clock that stepped backwards) do not make `ok` false.
  */
 export declare function verifyBundle(bundle: object, opts?: {
     expectRoot?: string;
@@ -234,5 +260,6 @@ export declare function verifyBundle(bundle: object, opts?: {
 }): {
     ok: boolean;
     issues: string[];
+    warnings: string[];
     checked: number;
 };

@@ -336,16 +336,19 @@ export function verifyReceipt(receipt, keyring) {
  * Verify a contiguous run of receipts: signatures, sequence numbers, chain
  * links, and monotonic timestamps.
  *
- * Timestamp regressions are reported but treated as a weaker signal than the
- * rest — clocks genuinely do step backwards, whereas a broken chain link
- * cannot happen by accident.
+ * Timestamp regressions are reported as warnings, not failures: clocks
+ * genuinely do step backwards (NTP, a VM resumed), whereas a broken chain
+ * link cannot happen by accident. Counting them as failures made an honest
+ * log fail `vw verify` and CI the first time its clock was corrected.
  *
  * @param {Receipt[]} receipts  Oldest first.
  * @param {Keyring} keyring
  * @param {object} [opts]
  * @param {string} [opts.expectPrev]  Chain hash the run should start from.
  * @param {number} [opts.expectSeq]   Sequence the run should start at.
- * @returns {{ ok: boolean, issues: VerifyIssue[], head: string, count: number }}
+ * @returns {{ ok: boolean, issues: VerifyIssue[], warnings: VerifyIssue[], head: string, count: number }}
+ *   `issues` are failures; `warnings` (kind `time`) are worth reading but do
+ *   not make `ok` false.
  */
 export function verifyChain(receipts, keyring, opts = {}) {
   /** @type {VerifyIssue[]} */
@@ -384,5 +387,7 @@ export function verifyChain(receipts, keyring, opts = {}) {
     expectedSeq = receipt.seq + 1;
   }
 
-  return { ok: issues.length === 0, issues, head: prev, count: receipts.length };
+  const failures = issues.filter((i) => i.kind !== 'time');
+  const warnings = issues.filter((i) => i.kind === 'time');
+  return { ok: failures.length === 0, issues: failures, warnings, head: prev, count: receipts.length };
 }
