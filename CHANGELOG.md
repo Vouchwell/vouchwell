@@ -5,7 +5,7 @@ up to 0.5.0 `proofwire` and `@proof_wire/*` — release together at the same ver
 
 ## Unreleased
 
-## 0.8.2 — 2026-11-14
+## 0.8.2 — 2026-11-15
 
 Fifteen fixes from a full review of the codebase, and TypeScript types:
 
@@ -53,8 +53,14 @@ Fifteen fixes from a full review of the codebase, and TypeScript types:
   log. Timestamps that go backwards are now warnings, in the core, the Python
   SDK and the website's verifier alike.
 - **Terminal approvals could answer the wrong call.** Concurrent escalations
-  raced for the next line typed, and a timed-out prompt kept reading the
-  terminal. Prompts now come one at a time and close what they open.
+  raced for the next line typed. And at a real terminal, a prompt that had
+  been answered or had timed out went on reading it, in a worker thread
+  nothing could stop: it took the line typed for the next prompt, which then
+  timed out and denied, and it kept `vw proxy` running after its server had
+  exited. Prompts now come one at a time, and on Linux and macOS the terminal
+  is opened once and read through a terminal handle, as `process.stdin` is,
+  which stops when the prompt is done. Tested against a pseudo-terminal.
+  Windows still reads the console as before.
 - **`vw check` printed bundle fields unescaped**, so a hostile bundle could
   put escape sequences on the auditor's terminal. Everything it shows from the
   bundle is escaped.
@@ -91,6 +97,9 @@ Fifteen fixes from a full review of the codebase, and TypeScript types:
 - **The public types are exported from `@vouchwell/core`:** `Receipt`,
   `Actor`, `Decision`, `Checkpoint`, `RecorderOptions`, `PolicyDecision` and
   the others a caller handles.
+- **`terminalStreams(fd)`** in `@vouchwell/proxy/approve`: the input and
+  output `ttyApprover`'s `open` option takes, over one descriptor, for
+  embedders with a terminal of their own.
 
 ## 0.8.1 — 2026-11-13
 

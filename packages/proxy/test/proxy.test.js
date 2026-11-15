@@ -837,3 +837,39 @@ test('a prompt shows agent-supplied arguments with control characters escaped', 
   assert.doesNotMatch(shown, /‮/);
   assert.match(shown, /\\u202e/);
 });
+
+// The terminal is opened once, for reading and writing, and both streams use
+// that descriptor. Two plain fs streams on one descriptor crashed the proxy:
+// destroying the reader closed it, and the prompt's last write hit EBADF.
+for (const first of ['input', 'output']) {
+  test(`terminalStreams shares one descriptor and closes it once, ${first} finishing first`, async () => {
+    const { terminalStreams } = await import('../src/approve.js');
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'vw-term-')), 'tty');
+    fs.writeFileSync(file, '');
+    const fd = fs.openSync(file, 'r+');
+    const { input, output } = terminalStreams(fd);
+    const errors = [];
+    input.on('error', (e) => errors.push(e));
+    output.on('error', (e) => errors.push(e));
+    const closed = (s) => new Promise((resolve) => s.once('close', resolve));
+    const both = Promise.all([closed(input), closed(output)]);
+
+    output.write('Approve? ');
+    if (first === 'input') {
+      input.destroy();
+      await closed(input);
+      assert.doesNotThrow(() => fs.fstatSync(fd), 'the writer still has the descriptor');
+      output.end('\n');
+    } else {
+      output.end('\n');
+      await closed(output);
+      assert.doesNotThrow(() => fs.fstatSync(fd), 'the reader still has the descriptor');
+      input.destroy();
+    }
+    await both;
+
+    assert.deepEqual(errors, []);
+    assert.equal(fs.readFileSync(file, 'utf8'), 'Approve? \n');
+    assert.throws(() => fs.fstatSync(fd), { code: 'EBADF' }, 'closed once both were done');
+  });
+}

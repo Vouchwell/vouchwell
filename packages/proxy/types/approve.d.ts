@@ -80,6 +80,31 @@ export declare function ttyApprover(opts?: {
     };
 }): (req: ApprovalRequest) => Promise<ApprovalOutcome>;
 /**
+ * A stream to read and a stream to write over one open descriptor, such as a
+ * terminal opened for both: what `ttyApprover`'s `open` returns. The streams
+ * take the descriptor over, and it is closed when both are done.
+ *
+ * A terminal is read the way `process.stdin` reads one, through a terminal
+ * handle that stops when destroyed. A file stream reads in a worker thread
+ * that nothing interrupts: destroyed after an answer, it went on waiting,
+ * took the next line typed (the next prompt's answer), and kept `vw proxy`
+ * from exiting after its server had.
+ *
+ * Anything else gets two fs streams that close the descriptor once, in
+ * whichever order they finish. Two plain fs streams cannot share one: each
+ * closes it when destroyed, `autoClose: false` or not, and the other's next
+ * write fails with EBADF.
+ *
+ * @param {number} fd  Open for reading and writing.
+ * @returns {{ input: NodeJS.ReadableStream & { destroy(): void }, output: NodeJS.WritableStream }}
+ */
+export declare function terminalStreams(fd: number): {
+    input: NodeJS.ReadableStream & {
+        destroy(): void;
+    };
+    output: NodeJS.WritableStream;
+};
+/**
  * Ask a service — Slack, PagerDuty, an internal approvals app.
  *
  * @param {object} opts
