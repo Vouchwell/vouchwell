@@ -76,6 +76,33 @@ test("the tests' documented fake keys pass, and a real-looking neighbour does no
   assert.equal(found.length, 2, found.join('\n'));
 });
 
+test('published source may not hold even a known fixture; tests may', () => {
+  // The demo once did: every \`npm install vouchwell\` delivered a key-shaped
+  // string, and launch checks reported it as a leaked Anthropic key.
+  const key = 'sk-ant-' + 'api03-Xk92mQvT1pLs8fR4nB6yH0jW';
+  assert.deepEqual(problemsIn({ 'packages/core/test/redact.test.js': `'${key}'`, 'sdk/python/tests/t.py': `'${key}'` }), []);
+  const found = problemsIn({
+    'packages/cli/src/demo.js': `const a = 1;\nconst k = '${key}';\n`,
+    'sdk/python/src/vouchwell/demo.py': `k = '${key}'\n`,
+  });
+  assert.ok(found.some((p) => p.startsWith('packages/cli/src/demo.js:2:') && /assemble it at runtime/.test(p)), found.join('\n'));
+  assert.ok(found.some((p) => p.startsWith('sdk/python/src/vouchwell/demo.py:1:')), found.join('\n'));
+});
+
+test('.env.example may be committed, with names and no values', () => {
+  assert.deepEqual(problemsIn({ '.env.example': '# The hub. Default 8787.\n# VOUCHWELL_PORT=\nVOUCHWELL_DB=\n' }), []);
+  const found = problemsIn({
+    // A value, a commented value, an exported one, and a description after the
+    // name, which uncommenting would turn into a value.
+    '.env.example': '# VOUCHWELL_PORT=\nVOUCHWELL_ADMIN_PASSWORD=hunter2\n# VOUCHWELL_SIGNER_TOKEN=abc\nexport HUB_URL=http://x\n# VOUCHWELL_HOST=   default 0.0.0.0\n',
+    '.env.example.local': 'A=1',
+  });
+  assert.deepEqual(found.filter((p) => /names only/.test(p)).map((p) => p.split(':').slice(0, 2).join(':')), [
+    '.env.example:2', '.env.example:3', '.env.example:4', '.env.example:5',
+  ]);
+  assert.ok(found.some((p) => p.startsWith('.env.example.local:') && /environment file/.test(p)), found.join('\n'));
+});
+
 test('oversized files are refused, and binaries are not scanned as text', () => {
   const big = problemsIn({ 'dump.json': Buffer.alloc(1024 * 1024 + 1, 0x20) });
   assert.match(big[0], /over 1 MB/);

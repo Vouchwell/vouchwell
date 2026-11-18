@@ -56,6 +56,10 @@ const POLICY = {
   egress: { denySecrets: true },
 };
 
+// The demo's made-up key, assembled as it is there (packages/cli/src/demo.js),
+// so no key-shaped string sits in the source.
+const FAKE_KEY = ['sk', 'ant', 'api03', 'Xk92mQvT1pLs8fR4nB6yH0jW'].join('-');
+
 const CALLS = [
   ['query', { sql: 'SELECT count(*) FROM orders WHERE status = $1' }],
   ['refund', { order: 'ord_8821', amount: 4500 }],
@@ -63,7 +67,7 @@ const CALLS = [
   ['refund', { order: 'ord_8823', amount: 9000 }],
   ['query', { sql: 'DELETE FROM customers WHERE churn_risk > 0.8' }],
   ['send_email', { to: 'sam@example.test', subject: 'Your refund', body: 'On its way.' }],
-  ['query', { sql: "SELECT * FROM logs WHERE token = 'sk-ant-api03-Xk92mQvT1pLs8fR4nB6yH0jW'" }],
+  ['query', { sql: `SELECT * FROM logs WHERE token = '${FAKE_KEY}'` }],
 ];
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vouchwell-sample-'));

@@ -5,6 +5,28 @@ up to 0.5.0 `proofwire` and `@proof_wire/*` — release together at the same ver
 
 ## Unreleased
 
+## 0.8.4 — 2026-11-18
+
+Launch housekeeping: every environment variable listed in one place, and no
+key-shaped string left in the published packages.
+
+### Added
+
+- **`.env.example`** lists every environment variable Vouchwell reads, by
+  name and grouped by what reads it, with what each does. Every entry is
+  commented out, so copying the file sets nothing. A test fails when the code
+  reads a variable the file does not list, and the hygiene check refuses a
+  value in it.
+
+### Changed
+
+- **The published demo no longer contains a key-shaped string.** `vw demo`'s
+  made-up Anthropic key (a 37-character fake the egress guard blocks) was a
+  literal in `packages/cli/src/demo.js`, so secret scanners reported the npm
+  package as leaking a key. It is assembled at runtime now, with the same
+  value and the same demo. The hygiene check refuses any key-shaped string in
+  published source, test fixtures included.
+
 ## 0.8.3 — 2026-11-18
 
 Terminal approvals on Windows get the answer typed for them, as 0.8.2 made

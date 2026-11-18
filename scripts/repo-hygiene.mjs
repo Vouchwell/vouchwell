@@ -20,7 +20,8 @@ const FORBIDDEN_PATHS = [
   [/(^|\/)\.(vouchwell|proofwire)\/(key\.pem|salts\.jsonl)$/, "a Vouchwell log's signing key or commitment salts"],
   [/(^|\/)\.(vouchwell|proofwire)-witness\//, "a witness's private state"],
   [/\.(pem|key|p12|pfx)$/i, 'a private key or certificate bundle'],
-  [/(^|\/)\.env(\..*)?$/, 'an environment file'],
+  // .env.example is the one exception: it lists names, and a value in it is refused below.
+  [/(^|\/)\.env(?!\.example$)(\..*)?$/, 'an environment file'],
   [/\.(db|db-wal|db-shm|sqlite|sqlite3)$/i, 'a database file'],
   [/(^|\/)credentials\.json$/, 'a credentials file'],
   [/(^|\/)\.npmrc$/, 'an npm config, which can hold an auth token'],
@@ -49,6 +50,17 @@ const KNOWN_FIXTURES = new Set([
   'sk-ant-api03-Xk92mQvT1pLs8fR4nB6yH0jW',
   'sk-ant-api03-abcdefghijklmnop12345',
 ]);
+
+/**
+ * Source published to npm and PyPI. Not even a known fixture may appear here:
+ * everyone who installs the package gets the file, and their secret scanners
+ * cannot tell a documented fake from a leaked key. Assemble one at runtime
+ * instead, as packages/cli/src/demo.js does.
+ */
+const PUBLISHED = /^(packages\/[^/]+\/src|sdk\/python\/src)\//;
+
+/** Lists the environment's variables by name, for people to copy: never a value. */
+const ENV_EXAMPLE = /(^|\/)\.env\.example$/;
 
 const MAX_BYTES = 1024 * 1024;
 // An evidence bundle is the whole record of agent work on this repository
@@ -83,12 +95,25 @@ export function hygieneProblems(root, files) {
     if (BINARY.test(file)) continue;
 
     const text = bytes.toString('utf8');
+    if (ENV_EXAMPLE.test(file)) {
+      text.split('\n').forEach((l, i) => {
+        if (/^[#\s]*(export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=\s*[^\s#]/.test(l)) {
+          problems.push(`${file}:${i + 1}: .env.example lists names only; leave the value empty`);
+        }
+      });
+    }
+    const published = PUBLISHED.test(file);
     for (const [pattern, what] of SECRET_PATTERNS) {
       const global = new RegExp(pattern.source, 'g');
       for (const m of text.matchAll(global)) {
-        if (KNOWN_FIXTURES.has(m[0])) continue;
+        const fixture = KNOWN_FIXTURES.has(m[0]);
+        if (fixture && !published) continue;
         const line = text.slice(0, m.index).split('\n').length;
-        problems.push(`${file}:${line}: looks like ${what}`);
+        problems.push(
+          fixture
+            ? `${file}:${line}: looks like ${what}: a known test fixture, but this file is published, so assemble it at runtime`
+            : `${file}:${line}: looks like ${what}`,
+        );
       }
     }
   }
