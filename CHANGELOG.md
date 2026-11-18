@@ -5,6 +5,10 @@ up to 0.5.0 `proofwire` and `@proof_wire/*` — release together at the same ver
 
 ## Unreleased
 
+## 0.8.5 — 2026-11-18
+
+Opening a log beside a process writing to it no longer calls the log corrupt.
+
 ### Fixed
 
 - **Opening a log while another process wrote to it could call the log
