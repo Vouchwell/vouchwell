@@ -5,6 +5,11 @@ up to 0.5.0 `proofwire` and `@proof_wire/*` — release together at the same ver
 
 ## Unreleased
 
+## 0.8.4 — 2026-11-18
+
+Launch housekeeping: every environment variable listed in one place, and no
+key-shaped string left in the published packages.
+
 ### Added
 
 - **`.env.example`** lists every environment variable Vouchwell reads, by
