@@ -29,6 +29,8 @@ data/
 # Secrets that must never reach a public repo, whatever they are called.
 .env
 .env.*
+# Names only, no values (scripts/repo-hygiene.mjs checks).
+!.env.example
 *.pem
 *.key
 .npmrc

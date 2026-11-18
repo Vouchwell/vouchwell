@@ -5,6 +5,14 @@ up to 0.5.0 `proofwire` and `@proof_wire/*` — release together at the same ver
 
 ## Unreleased
 
+### Added
+
+- **`.env.example`** lists every environment variable Vouchwell reads, by
+  name and grouped by what reads it, with what each does. Every entry is
+  commented out, so copying the file sets nothing. A test fails when the code
+  reads a variable the file does not list, and the hygiene check refuses a
+  value in it.
+
 ### Changed
 
 - **The published demo no longer contains a key-shaped string.** `vw demo`'s

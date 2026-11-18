@@ -89,6 +89,20 @@ test('published source may not hold even a known fixture; tests may', () => {
   assert.ok(found.some((p) => p.startsWith('sdk/python/src/vouchwell/demo.py:1:')), found.join('\n'));
 });
 
+test('.env.example may be committed, with names and no values', () => {
+  assert.deepEqual(problemsIn({ '.env.example': '# The hub. Default 8787.\n# VOUCHWELL_PORT=\nVOUCHWELL_DB=\n' }), []);
+  const found = problemsIn({
+    // A value, a commented value, an exported one, and a description after the
+    // name, which uncommenting would turn into a value.
+    '.env.example': '# VOUCHWELL_PORT=\nVOUCHWELL_ADMIN_PASSWORD=hunter2\n# VOUCHWELL_SIGNER_TOKEN=abc\nexport HUB_URL=http://x\n# VOUCHWELL_HOST=   default 0.0.0.0\n',
+    '.env.example.local': 'A=1',
+  });
+  assert.deepEqual(found.filter((p) => /names only/.test(p)).map((p) => p.split(':').slice(0, 2).join(':')), [
+    '.env.example:2', '.env.example:3', '.env.example:4', '.env.example:5',
+  ]);
+  assert.ok(found.some((p) => p.startsWith('.env.example.local:') && /environment file/.test(p)), found.join('\n'));
+});
+
 test('oversized files are refused, and binaries are not scanned as text', () => {
   const big = problemsIn({ 'dump.json': Buffer.alloc(1024 * 1024 + 1, 0x20) });
   assert.match(big[0], /over 1 MB/);

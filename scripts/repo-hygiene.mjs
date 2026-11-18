@@ -20,7 +20,8 @@ const FORBIDDEN_PATHS = [
   [/(^|\/)\.(vouchwell|proofwire)\/(key\.pem|salts\.jsonl)$/, "a Vouchwell log's signing key or commitment salts"],
   [/(^|\/)\.(vouchwell|proofwire)-witness\//, "a witness's private state"],
   [/\.(pem|key|p12|pfx)$/i, 'a private key or certificate bundle'],
-  [/(^|\/)\.env(\..*)?$/, 'an environment file'],
+  // .env.example is the one exception: it lists names, and a value in it is refused below.
+  [/(^|\/)\.env(?!\.example$)(\..*)?$/, 'an environment file'],
   [/\.(db|db-wal|db-shm|sqlite|sqlite3)$/i, 'a database file'],
   [/(^|\/)credentials\.json$/, 'a credentials file'],
   [/(^|\/)\.npmrc$/, 'an npm config, which can hold an auth token'],
@@ -58,6 +59,9 @@ const KNOWN_FIXTURES = new Set([
  */
 const PUBLISHED = /^(packages\/[^/]+\/src|sdk\/python\/src)\//;
 
+/** Lists the environment's variables by name, for people to copy: never a value. */
+const ENV_EXAMPLE = /(^|\/)\.env\.example$/;
+
 const MAX_BYTES = 1024 * 1024;
 // An evidence bundle is the whole record of agent work on this repository
 // (evidence/README.md), so it grows with every session by design.
@@ -91,6 +95,13 @@ export function hygieneProblems(root, files) {
     if (BINARY.test(file)) continue;
 
     const text = bytes.toString('utf8');
+    if (ENV_EXAMPLE.test(file)) {
+      text.split('\n').forEach((l, i) => {
+        if (/^[#\s]*(export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=\s*[^\s#]/.test(l)) {
+          problems.push(`${file}:${i + 1}: .env.example lists names only; leave the value empty`);
+        }
+      });
+    }
     const published = PUBLISHED.test(file);
     for (const [pattern, what] of SECRET_PATTERNS) {
       const global = new RegExp(pattern.source, 'g');
