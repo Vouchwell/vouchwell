@@ -5,6 +5,27 @@ up to 0.5.0 `proofwire` and `@proof_wire/*` — release together at the same ver
 
 ## Unreleased
 
+## 0.8.3 — 2026-11-18
+
+Terminal approvals on Windows get the answer typed for them, as 0.8.2 made
+them on Linux and macOS.
+
+### Fixed
+
+- **Terminal approvals on Windows could answer the wrong call.** The fix in
+  0.8.2 covered Linux and macOS; Windows still read the console with a file
+  stream, whose read stayed blocked after its prompt was done, took the line
+  typed for the next prompt (which then timed out and denied), and kept `vw
+  proxy` running after its server had exited. The console's input and screen
+  are now read and written through terminal handles, as `process.stdin` and
+  `process.stdout` use them, and both are opened for reading and writing,
+  which those handles need. Tested by typing into a real console on Windows
+  CI.
+- **The approval box was garbled in Windows consoles** not set to UTF-8
+  (`ΓöîΓöÇ` for `┌─`). It is written to the console as UTF-16 now.
+- **The release waits up to ten minutes for npm**, not three and a half, before
+  making the GitHub release, PyPI upload and MCP Registry entry.
+
 ## 0.8.2 — 2026-11-15
 
 Fifteen fixes from a full review of the codebase, and TypeScript types:

@@ -146,16 +146,20 @@ export function ttyApprover(opts = {}) {
  */
 function openTerminal() {
   if (process.platform === 'win32') {
-    // Two devices on Windows: the console's input, and its screen.
-    const inFd = fs.openSync('\\\\.\\CONIN$', 'r');
+    // Two devices on Windows: the console's input, and its screen. Both are
+    // opened for reading and writing. A terminal handle reads the console's
+    // mode and the screen's size, which needs read access (opened for writing
+    // only, the screen is not even seen as a console), and libuv stops a read
+    // waiting on the input by putting an Enter keypress into it.
+    const inFd = fs.openSync('\\\\.\\CONIN$', 'r+');
     let outFd;
     try {
-      outFd = fs.openSync('\\\\.\\CONOUT$', 'w');
+      outFd = fs.openSync('\\\\.\\CONOUT$', 'r+');
     } catch (err) {
       fs.closeSync(inFd);
       throw err;
     }
-    return { input: fs.createReadStream('', { fd: inFd }), output: fs.createWriteStream('', { fd: outFd }) };
+    return consoleStreams(inFd, outFd);
   }
   // One device elsewhere, opened once for both directions.
   return terminalStreams(fs.openSync('/dev/tty', 'r+'));
@@ -208,12 +212,51 @@ function terminalHandles(fd) {
     input.destroy();
     throw new Error('the terminal could not be reopened for reading');
   }
-  const output = new tty.WriteStream(fd);
+  const output = closedWhenFinished(new tty.WriteStream(fd));
   // Otherwise the writer uses the descriptor given, and closes it.
   if (ownCopy(output, fd)) fs.closeSync(fd);
-  // A terminal write stream stays open after end(); its copy is closed here.
-  output.once('finish', () => output.destroy());
   return { input, output };
+}
+
+/**
+ * A Windows console's input and screen, each through a terminal handle, as
+ * `process.stdin` and `process.stdout` read and write one. On Windows libuv
+ * uses the descriptor it is given rather than a copy, and closes it, so each
+ * handle owns one of the two. Destroyed, the reader stops even with a read
+ * waiting: libuv ends it with an Enter keypress put into the console's input,
+ * and drops what it read.
+ *
+ * Takes both descriptors over, and if it fails closes each once: through its
+ * handle where one already has it, directly otherwise.
+ *
+ * @param {number} inFd  The console's input, open for reading and writing.
+ * @param {number} outFd  Its screen.
+ * @returns {{ input: NodeJS.ReadableStream & { destroy(): void }, output: NodeJS.WritableStream }}
+ */
+function consoleStreams(inFd, outFd) {
+  /** @type {tty.ReadStream | undefined} */
+  let input;
+  try {
+    if (!tty.isatty(inFd) || !tty.isatty(outFd)) throw new Error('no console is attached');
+    input = new tty.ReadStream(inFd);
+    return { input, output: closedWhenFinished(new tty.WriteStream(outFd)) };
+  } catch (err) {
+    if (input) input.destroy();
+    else fs.closeSync(inFd);
+    fs.closeSync(outFd);
+    throw err;
+  }
+}
+
+/**
+ * A terminal write stream stays open after end(). This one is closed once
+ * what was written has gone out.
+ *
+ * @param {tty.WriteStream} output
+ */
+function closedWhenFinished(output) {
+  output.once('finish', () => output.destroy());
+  return output;
 }
 
 /**
