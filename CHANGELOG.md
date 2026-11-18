@@ -5,6 +5,20 @@ up to 0.5.0 `proofwire` and `@proof_wire/*` — release together at the same ver
 
 ## Unreleased
 
+## 0.8.5 — 2026-11-18
+
+Opening a log beside a process writing to it no longer calls the log corrupt.
+
+### Fixed
+
+- **Opening a log while another process wrote to it could call the log
+  corrupt.** Opening takes no lock, so it could catch a writer halfway through
+  a line, and it read that half line as the log's last: `entries.jsonl line
+  N is not valid JSON`. `vw verify`, `vw log`, or a second proxy starting
+  beside a busy one could hit it; CI's multi-process writer test did, now and
+  then. A last line that is not JSON yet is now given up to a second to be
+  finished before it is called broken.
+
 ## 0.8.4 — 2026-11-18
 
 Launch housekeeping: every environment variable listed in one place, and no
