@@ -54,6 +54,15 @@ const POLICY = {
   egress: { denySecrets: true },
 };
 
+/**
+ * Shaped like an Anthropic API key, so the egress guard has something to
+ * catch, and made up: 37 characters, where a real key runs past a hundred.
+ * The tests use the same value. Assembled here, as the hygiene tests assemble
+ * theirs, because this file is published to npm and a key-shaped string in it
+ * reads as a leaked key to every secret scanner that sees the package.
+ */
+const FAKE_KEY = ['sk', 'ant', 'api03', 'Xk92mQvT1pLs8fR4nB6yH0jW'].join('-');
+
 /** @type {Array<[string, Record<string, unknown>, string, 'ran' | 'blocked']>} tool, arguments, note, expected */
 const CALLS = [
   ['query', { sql: 'SELECT count(*) FROM orders WHERE status = $1' }, 'a harmless read', 'ran'],
@@ -62,7 +71,7 @@ const CALLS = [
   ['refund', { order: 'ord_8823', amount: 9000 }, '$90 refund — would reach $165', 'blocked'],
   ['query', { sql: 'DELETE FROM customers WHERE churn_risk > 0.8' }, 'destructive SQL', 'blocked'],
   ['send_email', { to: 'sam@example.test', subject: 'Your refund', body: 'On its way.' }, 'outbound mail', 'ran'],
-  ['query', { sql: "SELECT * FROM logs WHERE token = 'sk-ant-api03-Xk92mQvT1pLs8fR4nB6yH0jW'" }, 'a live credential in the args', 'blocked'],
+  ['query', { sql: `SELECT * FROM logs WHERE token = '${FAKE_KEY}'` }, 'a live credential in the args', 'blocked'],
 ];
 
 /** @param {number} n @param {string} s */

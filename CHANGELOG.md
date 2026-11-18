@@ -5,6 +5,15 @@ up to 0.5.0 `proofwire` and `@proof_wire/*` — release together at the same ver
 
 ## Unreleased
 
+### Changed
+
+- **The published demo no longer contains a key-shaped string.** `vw demo`'s
+  made-up Anthropic key (a 37-character fake the egress guard blocks) was a
+  literal in `packages/cli/src/demo.js`, so secret scanners reported the npm
+  package as leaking a key. It is assembled at runtime now, with the same
+  value and the same demo. The hygiene check refuses any key-shaped string in
+  published source, test fixtures included.
+
 ## 0.8.3 — 2026-11-18
 
 Terminal approvals on Windows get the answer typed for them, as 0.8.2 made

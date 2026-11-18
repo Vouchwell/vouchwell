@@ -76,6 +76,19 @@ test("the tests' documented fake keys pass, and a real-looking neighbour does no
   assert.equal(found.length, 2, found.join('\n'));
 });
 
+test('published source may not hold even a known fixture; tests may', () => {
+  // The demo once did: every \`npm install vouchwell\` delivered a key-shaped
+  // string, and launch checks reported it as a leaked Anthropic key.
+  const key = 'sk-ant-' + 'api03-Xk92mQvT1pLs8fR4nB6yH0jW';
+  assert.deepEqual(problemsIn({ 'packages/core/test/redact.test.js': `'${key}'`, 'sdk/python/tests/t.py': `'${key}'` }), []);
+  const found = problemsIn({
+    'packages/cli/src/demo.js': `const a = 1;\nconst k = '${key}';\n`,
+    'sdk/python/src/vouchwell/demo.py': `k = '${key}'\n`,
+  });
+  assert.ok(found.some((p) => p.startsWith('packages/cli/src/demo.js:2:') && /assemble it at runtime/.test(p)), found.join('\n'));
+  assert.ok(found.some((p) => p.startsWith('sdk/python/src/vouchwell/demo.py:1:')), found.join('\n'));
+});
+
 test('oversized files are refused, and binaries are not scanned as text', () => {
   const big = problemsIn({ 'dump.json': Buffer.alloc(1024 * 1024 + 1, 0x20) });
   assert.match(big[0], /over 1 MB/);

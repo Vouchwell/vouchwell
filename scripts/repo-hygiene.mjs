@@ -50,6 +50,14 @@ const KNOWN_FIXTURES = new Set([
   'sk-ant-api03-abcdefghijklmnop12345',
 ]);
 
+/**
+ * Source published to npm and PyPI. Not even a known fixture may appear here:
+ * everyone who installs the package gets the file, and their secret scanners
+ * cannot tell a documented fake from a leaked key. Assemble one at runtime
+ * instead, as packages/cli/src/demo.js does.
+ */
+const PUBLISHED = /^(packages\/[^/]+\/src|sdk\/python\/src)\//;
+
 const MAX_BYTES = 1024 * 1024;
 // An evidence bundle is the whole record of agent work on this repository
 // (evidence/README.md), so it grows with every session by design.
@@ -83,12 +91,18 @@ export function hygieneProblems(root, files) {
     if (BINARY.test(file)) continue;
 
     const text = bytes.toString('utf8');
+    const published = PUBLISHED.test(file);
     for (const [pattern, what] of SECRET_PATTERNS) {
       const global = new RegExp(pattern.source, 'g');
       for (const m of text.matchAll(global)) {
-        if (KNOWN_FIXTURES.has(m[0])) continue;
+        const fixture = KNOWN_FIXTURES.has(m[0]);
+        if (fixture && !published) continue;
         const line = text.slice(0, m.index).split('\n').length;
-        problems.push(`${file}:${line}: looks like ${what}`);
+        problems.push(
+          fixture
+            ? `${file}:${line}: looks like ${what}: a known test fixture, but this file is published, so assemble it at runtime`
+            : `${file}:${line}: looks like ${what}`,
+        );
       }
     }
   }
