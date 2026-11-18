@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { Worker } from 'node:worker_threads';
 import { ProofLog, Policy, Recorder, PolicyDenied } from '../src/index.js';
 
 // A URL, not a path: the child imports it, and on Windows an absolute path
@@ -88,6 +89,32 @@ test('opening a log reads a last line with no newline, and refuses one that is n
   assert.equal(ProofLog.open(dir, { readOnly: true }).size, 1);
   fs.writeFileSync(file, `${line}\n{"seq": 1, "trunc`);
   assert.throws(() => ProofLog.open(dir, { readOnly: true }), /line 2 is not valid JSON/);
+});
+
+// Opening a log takes no lock, so it can catch another writer halfway through
+// a line. Opening read the half line as the log's last and called the log
+// corrupt: the multi-process test above failed that way on CI, now and then.
+test('opening a log mid-append waits for the line rather than calling the log corrupt', async () => {
+  const dir = freshLog();
+  const log = ProofLog.open(dir);
+  record(log, 'a');
+  record(log, 'b');
+  const file = path.join(dir, 'entries.jsonl');
+  const lines = fs.readFileSync(file, 'utf8').trimEnd().split('\n');
+  const last = `${lines.pop()}\n`;
+  fs.writeFileSync(file, `${lines.join('\n')}\n${last.slice(0, 40)}`);
+
+  // Another thread finishes the line while this one, blocked in open, reads.
+  const writer = new Worker(
+    `setTimeout(() => require('node:fs').appendFileSync(${JSON.stringify(file)}, ${JSON.stringify(last.slice(40))}), 150);`,
+    { eval: true },
+  );
+  const done = new Promise((resolve) => writer.once('exit', resolve));
+  const opened = ProofLog.open(dir, { readOnly: true });
+  await done;
+
+  assert.equal(opened.size, 2);
+  assert.equal(opened.audit().ok, true);
 });
 
 test('a log that shrinks under a writer is refused rather than appended to', () => {

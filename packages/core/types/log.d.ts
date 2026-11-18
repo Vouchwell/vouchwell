@@ -66,6 +66,14 @@ export declare class ProofLog {
     refresh(opts?: {
         strict?: boolean;
     }): import('./receipt.js').Receipt[];
+    /**
+     * What entries.jsonl holds past what this instance has read, or null when
+     * there is nothing new (or no file yet).
+     *
+     * @private
+     * @returns {Buffer | null}
+     */
+    private _unread;
     /** @returns {number} */
     get size(): number;
     /** @returns {string} Current Merkle root, hex. */

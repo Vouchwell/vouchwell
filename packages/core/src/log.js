@@ -56,6 +56,33 @@ function readLines(file) {
   return fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.trim() !== '');
 }
 
+/**
+ * How long a strict read waits for a last line that is not yet JSON to be
+ * finished by the writer still writing it. An append is one write of one
+ * line, so a torn line is whole again within microseconds; one still torn
+ * after this long is broken.
+ */
+const TORN_LINE_WAIT_MS = 1000;
+const NAP = new Int32Array(new SharedArrayBuffer(4));
+
+/**
+ * Whether `buf` ends in text after its last newline that does not parse yet:
+ * a line still being written, or a broken one. A prefix of a line is never
+ * valid JSON, since every line is one object, closed only at its end.
+ *
+ * @param {Buffer} buf
+ */
+function unfinishedLine(buf) {
+  const tail = buf.subarray(buf.lastIndexOf(0x0a) + 1).toString('utf8').trim();
+  if (tail === '') return false;
+  try {
+    JSON.parse(tail);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 export class ProofLog {
   /**
    * @param {string} dir
@@ -173,33 +200,18 @@ export class ProofLog {
    * @returns {import('./receipt.js').Receipt[]}  The entries that were new.
    */
   refresh(opts = {}) {
-    const file = path.join(this.dir, FILES.entries);
-    // Open, then size the file that is open. Sizing the path and then opening
-    // it reads one file's length from what may by then be another (replaced
-    // by a rename, say).
-    let fd;
-    try {
-      fd = fs.openSync(file, 'r');
-    } catch (err) {
-      if (/** @type {NodeJS.ErrnoException} */ (err).code === 'ENOENT') return [];
-      throw err;
-    }
-    let buf;
-    try {
-      const size = fs.fstatSync(fd).size;
-      if (size === this._bytes) return [];
-      if (size < this._bytes) {
-        throw new Error(
-          `entries.jsonl in ${this.dir} is ${size} bytes, shorter than the ${this._bytes} already read: ` +
-            'it was truncated or rewritten',
-        );
+    let buf = this._unread();
+    if (buf === null) return [];
+    if (opts.strict) {
+      // Strict reads a last line with no newline too. But `open` takes no
+      // lock, so that line may be another writer's, half written: give it a
+      // moment to finish before calling it corrupt. A line that is broken
+      // stays broken, and is reported once the wait is up.
+      const deadline = Date.now() + TORN_LINE_WAIT_MS;
+      while (unfinishedLine(buf) && Date.now() < deadline) {
+        Atomics.wait(NAP, 0, 0, 10);
+        buf = this._unread() ?? buf;
       }
-      buf = Buffer.alloc(size - this._bytes);
-      // A short read (the file shrank after fstat) leaves zeros at the end;
-      // keep only what was read.
-      buf = buf.subarray(0, fs.readSync(fd, buf, 0, buf.length, this._bytes));
-    } finally {
-      fs.closeSync(fd);
     }
     // Whole lines only, unless strict: a fragment after the last newline is
     // normally a line another writer has not finished writing.
@@ -226,6 +238,43 @@ export class ProofLog {
     }
     this._bytes += end;
     return added;
+  }
+
+  /**
+   * What entries.jsonl holds past what this instance has read, or null when
+   * there is nothing new (or no file yet).
+   *
+   * @private
+   * @returns {Buffer | null}
+   */
+  _unread() {
+    const file = path.join(this.dir, FILES.entries);
+    // Open, then size the file that is open. Sizing the path and then opening
+    // it reads one file's length from what may by then be another (replaced
+    // by a rename, say).
+    let fd;
+    try {
+      fd = fs.openSync(file, 'r');
+    } catch (err) {
+      if (/** @type {NodeJS.ErrnoException} */ (err).code === 'ENOENT') return null;
+      throw err;
+    }
+    try {
+      const size = fs.fstatSync(fd).size;
+      if (size === this._bytes) return null;
+      if (size < this._bytes) {
+        throw new Error(
+          `entries.jsonl in ${this.dir} is ${size} bytes, shorter than the ${this._bytes} already read: ` +
+            'it was truncated or rewritten',
+        );
+      }
+      const buf = Buffer.alloc(size - this._bytes);
+      // A short read (the file shrank after fstat) leaves zeros at the end;
+      // keep only what was read.
+      return buf.subarray(0, fs.readSync(fd, buf, 0, buf.length, this._bytes));
+    } finally {
+      fs.closeSync(fd);
+    }
   }
 
   /** @returns {number} */
